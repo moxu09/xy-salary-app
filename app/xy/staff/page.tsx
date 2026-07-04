@@ -4,14 +4,15 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
-  RefreshCw,
+  CalendarHeart,
+  Gift,
   LogOut,
+  Power,
+  RefreshCw,
+  Save,
+  Trophy,
   UserRound,
   WalletCards,
-  Save,
-  Power,
-  Gift,
-  Trophy,
 } from "lucide-react";
 
 type Staff = {
@@ -22,14 +23,13 @@ type Staff = {
   real_name?: string | null;
   gender?: string | null;
   birthday?: string | null;
+  birthday_month?: number | null;
   bank_name?: string | null;
   bank_account?: string | null;
   avatar_url?: string | null;
   is_online?: boolean | null;
   is_active?: boolean | null;
   can_take_order?: boolean | null;
-  commission_tier?: string | null;
-  commission_note?: string | null;
   created_at?: string | null;
 };
 
@@ -70,6 +70,7 @@ type ProfileForm = {
   real_name: string;
   gender: string;
   birthday: string;
+  birthday_month: string;
   bank_name: string;
   bank_account: string;
 };
@@ -117,6 +118,12 @@ function formatMonthLabel(monthText: string) {
   return `${yearText} 年 ${month} 月`;
 }
 
+function getSelectedMonthNumber(monthText: string) {
+  const month = Number(monthText.split("-")[1] || 0);
+
+  return month >= 1 && month <= 12 ? month : new Date().getMonth() + 1;
+}
+
 function money(value: number | null | undefined) {
   return `$${Number(value || 0).toLocaleString("zh-TW")}`;
 }
@@ -150,92 +157,8 @@ function getOrderCustomer(order: SalaryOrder) {
   return order.customer_name || order.customer_id || "-";
 }
 
-function getManualRate(tier?: string | null) {
-  if (tier === "rate_80") return 80;
-  if (tier === "rate_85") return 85;
-  if (tier === "rate_90") return 90;
-  if (tier === "manager_95") return 95;
-  return null;
-}
-
-function getTaipeiMonthText(date = new Date()) {
-  const taipeiDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-  return taipeiDate.toISOString().slice(0, 7);
-}
-
-function getNextMonthTextFromIso(isoText?: string | null) {
-  if (!isoText) return "";
-
-  const date = new Date(isoText);
-  const taipeiDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-
-  const year = taipeiDate.getUTCFullYear();
-  const month = taipeiDate.getUTCMonth();
-
-  const next = new Date(Date.UTC(year, month + 1, 1));
-  return next.toISOString().slice(0, 7);
-}
-
 function getOrderSourceDate(order: SalaryOrder) {
   return order.order_finished_at || order.completed_at || order.created_at || null;
-}
-
-function getFirstReachAmountDate(orderList: SalaryOrder[], targetAmount: number) {
-  const sortedOrders = [...orderList]
-    .filter((order) => getOrderSourceDate(order))
-    .sort((a, b) => {
-      const aDate = getOrderSourceDate(a);
-      const bDate = getOrderSourceDate(b);
-
-      return new Date(aDate || 0).getTime() - new Date(bDate || 0).getTime();
-    });
-
-  let total = 0;
-
-  for (const order of sortedOrders) {
-    total += getOrderAmount(order);
-
-    if (total >= targetAmount) {
-      return getOrderSourceDate(order);
-    }
-  }
-
-  return null;
-}
-
-function getCurrentRateByRule(
-  staff: Staff | null,
-  orderList: SalaryOrder[],
-  totalYearSalary: number
-) {
-  const now = new Date();
-  const openingEnd = new Date("2026-09-01T00:00:00+08:00");
-  const manual = getManualRate(staff?.commission_tier);
-
-  if (manual) {
-    return manual;
-  }
-
-  if (now < openingEnd) {
-    return 90;
-  }
-
-  if (totalYearSalary >= 100000) {
-    return 90;
-  }
-
-  const firstReach10kDate = getFirstReachAmountDate(orderList, 10000);
-
-  if (firstReach10kDate) {
-    const reachNextMonth = getNextMonthTextFromIso(firstReach10kDate);
-    const currentMonth = getTaipeiMonthText(now);
-
-    if (currentMonth >= reachNextMonth) {
-      return 85;
-    }
-  }
-
-  return 80;
 }
 
 function getDisplayName(staff: Staff | null) {
@@ -248,6 +171,26 @@ function getDisplayName(staff: Staff | null) {
     staff.discord_id ||
     "員工"
   );
+}
+
+function getBirthdayMonth(staff: Staff | null) {
+  if (!staff) return null;
+
+  if (
+    staff.birthday_month &&
+    staff.birthday_month >= 1 &&
+    staff.birthday_month <= 12
+  ) {
+    return staff.birthday_month;
+  }
+
+  if (!staff.birthday) return null;
+
+  const date = new Date(staff.birthday);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.getMonth() + 1;
 }
 
 function getDiscordIdFromSession(session: any) {
@@ -283,11 +226,18 @@ function getAvatarFromSession(session: any) {
   return metadata.avatar_url || metadata.picture || null;
 }
 
+function getBenefitText(bonusList: Bonus[], keyText: string) {
+  const found = bonusList.find((bonus) =>
+    String(bonus.description || "").includes(keyText)
+  );
+
+  return found ? "已發放" : "尚未發放";
+}
+
 export default function XYStaffPage() {
   const [loading, setLoading] = useState(true);
   const [staff, setStaff] = useState<Staff | null>(null);
   const [salaryOrders, setSalaryOrders] = useState<SalaryOrder[]>([]);
-  const [allSalaryOrders, setAllSalaryOrders] = useState<SalaryOrder[]>([]);
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
   const [profileSaving, setProfileSaving] = useState(false);
   const [onlineSaving, setOnlineSaving] = useState(false);
@@ -299,15 +249,21 @@ export default function XYStaffPage() {
     real_name: "",
     gender: "",
     birthday: "",
+    birthday_month: "",
     bank_name: "",
     bank_account: "",
   });
 
   const monthOrderCount = salaryOrders.length;
 
+  const monthOrderAmount = useMemo(() => {
+    return salaryOrders.reduce((sum, order) => sum + getOrderAmount(order), 0);
+  }, [salaryOrders]);
+
   const monthSalary = useMemo(() => {
     return salaryOrders.reduce(
-      (sum, order) => sum + Number(order.staff_salary || 0),
+      (sum, order) =>
+        sum + Number(order.staff_salary || 0) + Number(order.bonus_amount || 0),
       0
     );
   }, [salaryOrders]);
@@ -330,31 +286,27 @@ export default function XYStaffPage() {
     return orderTotal + monthBonus;
   }, [salaryOrders, monthBonus]);
 
-  const totalOrderAmount = useMemo(() => {
-    return allSalaryOrders.reduce((sum, order) => sum + getOrderAmount(order), 0);
-  }, [allSalaryOrders]);
+  const currentBaseRate = monthOrderAmount >= 7000 ? 80 : 75;
+  const progress7000 = Math.min(100, Math.round((monthOrderAmount / 7000) * 100));
+  const progress5000Salary = Math.min(
+    100,
+    Math.round((monthSalary / 5000) * 100)
+  );
 
-  const totalYearSalary = useMemo(() => {
-    const year = new Date().getFullYear();
+  const selectedMonthNumber = getSelectedMonthNumber(selectedMonth);
+  const staffBirthdayMonth = getBirthdayMonth(staff);
+  const isBirthdayMonth =
+    staffBirthdayMonth !== null && staffBirthdayMonth === selectedMonthNumber;
 
-    return allSalaryOrders
-      .filter((order) => {
-        const sourceDate =
-          order.order_finished_at || order.completed_at || order.created_at;
+  const salaryBenefitText = getBenefitText(
+    bonuses,
+    `每月薪資達標獎金｜${selectedMonth}`
+  );
 
-        if (!sourceDate) return false;
-
-        return new Date(sourceDate).getFullYear() === year;
-      })
-      .reduce((sum, order) => sum + Number(order.staff_salary || 0), 0);
-  }, [allSalaryOrders]);
-
-  const currentRate = useMemo(() => {
-    return getCurrentRateByRule(staff, allSalaryOrders, totalYearSalary);
-  }, [staff, allSalaryOrders, totalYearSalary]);
-
-  const progress85 = Math.min(100, Math.round((totalOrderAmount / 10000) * 100));
-  const progress90 = Math.min(100, Math.round((totalYearSalary / 100000) * 100));
+  const birthdayBenefitText = getBenefitText(
+    bonuses,
+    `生日禮金｜${selectedMonth}`
+  );
 
   useEffect(() => {
     boot();
@@ -420,6 +372,9 @@ export default function XYStaffPage() {
         real_name: staffData.real_name || "",
         gender: staffData.gender || "",
         birthday: staffData.birthday || "",
+        birthday_month: staffData.birthday_month
+          ? String(staffData.birthday_month)
+          : "",
         bank_name: staffData.bank_name || "",
         bank_account: staffData.bank_account || "",
       });
@@ -450,20 +405,6 @@ export default function XYStaffPage() {
       setSalaryOrders([]);
     } else {
       setSalaryOrders((monthOrders || []) as SalaryOrder[]);
-    }
-
-    const { data: allOrders, error: allError } = await supabase
-      .from("xy_play_orders")
-      .select("*")
-      .eq("discord_id", discordId)
-      .or("is_deleted.eq.false,is_deleted.is.null")
-      .order("order_finished_at", { ascending: false });
-
-    if (allError) {
-      console.error("load all xy salary orders error:", allError);
-      setAllSalaryOrders([]);
-    } else {
-      setAllSalaryOrders((allOrders || []) as SalaryOrder[]);
     }
 
     const { data: bonusData, error: bonusError } = await supabase
@@ -497,6 +438,20 @@ export default function XYStaffPage() {
   async function saveProfile() {
     if (!staff) return;
 
+    const birthdayMonthNumber = profileForm.birthday_month
+      ? Number(profileForm.birthday_month)
+      : null;
+
+    if (
+      birthdayMonthNumber !== null &&
+      (!Number.isInteger(birthdayMonthNumber) ||
+        birthdayMonthNumber < 1 ||
+        birthdayMonthNumber > 12)
+    ) {
+      alert("生日月份請選擇 1 到 12 月");
+      return;
+    }
+
     setProfileSaving(true);
 
     const { data, error } = await supabase
@@ -506,6 +461,7 @@ export default function XYStaffPage() {
         real_name: profileForm.real_name || null,
         gender: profileForm.gender || null,
         birthday: profileForm.birthday || null,
+        birthday_month: birthdayMonthNumber,
         bank_name: profileForm.bank_name || null,
         bank_account: profileForm.bank_account || null,
         updated_at: new Date().toISOString(),
@@ -648,8 +604,8 @@ export default function XYStaffPage() {
 
         <section className="grid gap-4 md:grid-cols-4">
           <StatCard title="月份訂單" value={`${monthOrderCount} 筆`} />
+          <StatCard title="本月接單金額" value={money(monthOrderAmount)} />
           <StatCard title="月份薪資" value={money(monthSalary)} />
-          <StatCard title="獎金 / 扣除" value={money(monthBonus)} />
           <StatCard title="未發薪" value={money(unpaidAmount)} />
         </section>
 
@@ -683,41 +639,64 @@ export default function XYStaffPage() {
               <div>
                 <p className="flex items-center gap-2 text-sm font-bold text-orange-600">
                   <Trophy size={18} />
-                  我的抽成檔位
+                  我的抽成規則
                 </p>
 
                 <div className="mt-4 flex items-end gap-2">
                   <p className="text-4xl font-black text-slate-900">
-                    {currentRate}%
+                    {currentBaseRate}%
                   </p>
 
                   <p className="pb-1 text-sm font-semibold text-slate-500">
-                    {staff.commission_tier === "auto" || !staff.commission_tier
-                      ? "自動判定"
-                      : "後台設定"}
+                    目前本月基礎抽成
                   </p>
                 </div>
 
-                <p className="mt-3 text-sm leading-6 text-slate-500">
-                  2026/09/01 前未手動設定者預設 90%；後台設定會優先套用。
-                  9 月後預設 80%，累積接單滿 10,000 後下個月 85%，
-                  年度薪資達標後隔年 90%。
-                </p>
+                <div className="mt-3 space-y-1 text-sm leading-6 text-slate-500">
+                  <p>基礎抽成：75%</p>
+                  <p>本月接單金額滿 7000 後：基礎抽成 80%</p>
+                  <p>若該筆訂單金額大於 4999：75% 會變 80%，80% 會變 82%</p>
+                </div>
               </div>
 
               <div className="mt-5 space-y-4">
                 <ProgressBar
-                  title="升級 85% 進度"
-                  current={totalOrderAmount}
-                  target={10000}
-                  percent={progress85}
+                  title="本月 7000 接單金額進度"
+                  current={monthOrderAmount}
+                  target={7000}
+                  percent={progress7000}
                 />
 
                 <ProgressBar
-                  title="升級隔年 90% 進度"
-                  current={totalYearSalary}
-                  target={100000}
-                  percent={progress90}
+                  title="本月薪資 5000 福利進度"
+                  current={monthSalary}
+                  target={5000}
+                  percent={progress5000Salary}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+              <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
+                <CalendarHeart size={20} className="text-orange-500" />
+                本月福利狀態
+              </h2>
+
+              <div className="mt-4 space-y-3">
+                <BenefitRow
+                  title="薪資達標獎金"
+                  desc="當月累積薪資大於 5000，可得 250 元，每月一次。"
+                  status={
+                    monthSalary > 5000
+                      ? salaryBenefitText
+                      : `尚未達標，還差 ${money(Math.max(5000 - monthSalary, 0))}`
+                  }
+                />
+
+                <BenefitRow
+                  title="生日禮金"
+                  desc="生日月份符合當月，可得 200 元，每月一次。"
+                  status={isBirthdayMonth ? birthdayBenefitText : "非生日月份"}
                 />
               </div>
             </div>
@@ -813,7 +792,7 @@ export default function XYStaffPage() {
                   </select>
                 </Field>
 
-                <Field label="生日">
+                <Field label="生日日期">
                   <input
                     type="date"
                     value={profileForm.birthday}
@@ -824,6 +803,29 @@ export default function XYStaffPage() {
                       }))
                     }
                   />
+                </Field>
+
+                <Field label="生日月份">
+                  <select
+                    value={profileForm.birthday_month}
+                    onChange={(event) =>
+                      setProfileForm((prev) => ({
+                        ...prev,
+                        birthday_month: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">未填寫</option>
+                    {Array.from({ length: 12 }).map((_, index) => {
+                      const month = index + 1;
+
+                      return (
+                        <option key={month} value={String(month)}>
+                          {month} 月
+                        </option>
+                      );
+                    })}
+                  </select>
                 </Field>
 
                 <Field label="銀行名稱">
@@ -890,10 +892,10 @@ export default function XYStaffPage() {
                         <th>客人</th>
                         <th>項目</th>
                         <th>訂單金額</th>
+                        <th>抽成</th>
                         <th>薪資</th>
                         <th>獎金</th>
                         <th>狀態</th>
-                        <th>發薪時間</th>
                       </tr>
                     </thead>
 
@@ -906,6 +908,7 @@ export default function XYStaffPage() {
                           <td className="font-bold text-slate-700">
                             {money(getOrderAmount(order))}
                           </td>
+                          <td>{Number(order.salary_rate || 0)}%</td>
                           <td className="font-bold text-orange-600">
                             {money(order.staff_salary)}
                           </td>
@@ -921,7 +924,6 @@ export default function XYStaffPage() {
                               {order.status || "未發薪"}
                             </span>
                           </td>
-                          <td>{order.status === "已發薪" ? "已發薪" : "-"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1034,6 +1036,31 @@ function ProgressBar({
           {money(current)} / {money(target)}
         </span>
         <span>還差 {money(Math.max(target - current, 0))}</span>
+      </div>
+    </div>
+  );
+}
+
+function BenefitRow({
+  title,
+  desc,
+  status,
+}: {
+  title: string;
+  desc: string;
+  status: string;
+}) {
+  return (
+    <div className="rounded-[18px] border border-orange-100 bg-orange-50/40 p-4">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-sm font-black text-slate-800">{title}</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">{desc}</p>
+        </div>
+
+        <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-orange-600">
+          {status}
+        </span>
       </div>
     </div>
   );

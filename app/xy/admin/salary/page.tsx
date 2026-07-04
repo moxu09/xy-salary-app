@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  Sparkles,
   Trash2,
   WalletCards,
 } from "lucide-react";
@@ -23,7 +24,8 @@ type Staff = {
   discord_name?: string | null;
   display_name?: string | null;
   real_name?: string | null;
-  commission_tier?: string | null;
+  birthday?: string | null;
+  birthday_month?: number | null;
   is_active?: boolean | null;
 };
 
@@ -114,6 +116,8 @@ function getMonthRange(monthText: string) {
   );
 
   return {
+    start,
+    end,
     startIso: start.toISOString(),
     endIso: end.toISOString(),
   };
@@ -223,13 +227,18 @@ function getOrderSourceDate(order: SalaryOrder) {
   return order.order_finished_at || order.completed_at || order.created_at || null;
 }
 
-function getCommissionRate(staff: Staff | null | undefined) {
-  if (staff?.commission_tier === "rate_80") return 80;
-  if (staff?.commission_tier === "rate_85") return 85;
-  if (staff?.commission_tier === "rate_90") return 90;
-  if (staff?.commission_tier === "manager_95") return 95;
+function getBirthdayMonth(staff: Staff) {
+  if (staff.birthday_month && staff.birthday_month >= 1 && staff.birthday_month <= 12) {
+    return staff.birthday_month;
+  }
 
-  return 90;
+  if (!staff.birthday) return null;
+
+  const date = new Date(staff.birthday);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.getMonth() + 1;
 }
 
 function makeEmptyOrderForm(): OrderForm {
@@ -240,7 +249,7 @@ function makeEmptyOrderForm(): OrderForm {
     customer_name: "",
     service_name: "陪玩薪資",
     order_amount: "",
-    salary_rate: "90",
+    salary_rate: "75",
     staff_salary: "",
     bonus_amount: "0",
     status: "未發薪",
@@ -270,6 +279,12 @@ function makeOrderNo() {
   return `XY-${timestamp}-${random}`;
 }
 
+function getSelectedMonthNumber(monthText: string) {
+  const month = Number(monthText.split("-")[1] || 0);
+
+  return month >= 1 && month <= 12 ? month : new Date().getMonth() + 1;
+}
+
 export default function XYAdminSalaryPage() {
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -285,6 +300,7 @@ export default function XYAdminSalaryPage() {
   const [savingOrder, setSavingOrder] = useState(false);
   const [savingBonus, setSavingBonus] = useState(false);
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [generatingBenefits, setGeneratingBenefits] = useState(false);
 
   const filteredOrders = useMemo(() => {
     const key = keyword.trim().toLowerCase();
@@ -465,7 +481,6 @@ export default function XYAdminSalaryPage() {
           ...prev,
           discord_id: firstStaff.discord_id,
           staff_name: getDisplayName(firstStaff),
-          salary_rate: String(getCommissionRate(firstStaff)),
         }));
 
         setBonusForm((prev) => ({
@@ -493,6 +508,49 @@ export default function XYAdminSalaryPage() {
     setLoading(false);
   }
 
+  function getStaffMonthOrderAmount(discordId: string, excludeOrderId?: string) {
+    return orders
+      .filter((order) => {
+        if (order.discord_id !== discordId) return false;
+        if (excludeOrderId && order.id === excludeOrderId) return false;
+
+        return true;
+      })
+      .reduce((sum, order) => sum + getOrderAmount(order), 0);
+  }
+
+  function calculateRuleRate(
+    discordId: string,
+    orderAmount: number,
+    excludeOrderId?: string
+  ) {
+    const previousMonthAmount = getStaffMonthOrderAmount(discordId, excludeOrderId);
+    const monthAmountWithCurrentOrder = previousMonthAmount + orderAmount;
+
+    let rate = monthAmountWithCurrentOrder >= 7000 ? 80 : 75;
+
+    if (orderAmount > 4999) {
+      rate = rate >= 80 ? 82 : 80;
+    }
+
+    return rate;
+  }
+
+  function calculateRuleSalary(
+    discordId: string,
+    orderAmountText: string,
+    excludeOrderId?: string
+  ) {
+    const orderAmount = numberValue(orderAmountText);
+    const rate = calculateRuleRate(discordId, orderAmount, excludeOrderId);
+    const salary = Math.round(orderAmount * (rate / 100));
+
+    return {
+      rate,
+      salary,
+    };
+  }
+
   function updateOrderForm<K extends keyof OrderForm>(
     key: K,
     value: OrderForm[K]
@@ -515,16 +573,25 @@ export default function XYAdminSalaryPage() {
 
   function handleOrderStaffChange(discordId: string) {
     const staff = staffList.find((item) => item.discord_id === discordId);
-    const rate = getCommissionRate(staff);
+    const result = calculateRuleSalary(discordId, orderForm.order_amount, orderForm.id);
 
     setOrderForm((prev) => ({
       ...prev,
       discord_id: discordId,
       staff_name: getDisplayName(staff),
-      salary_rate: String(rate),
-      staff_salary: prev.order_amount
-        ? String(Math.round(numberValue(prev.order_amount) * (rate / 100)))
-        : prev.staff_salary,
+      salary_rate: String(result.rate),
+      staff_salary: prev.order_amount ? String(result.salary) : "",
+    }));
+  }
+
+  function handleOrderAmountChange(value: string) {
+    const result = calculateRuleSalary(orderForm.discord_id, value, orderForm.id);
+
+    setOrderForm((prev) => ({
+      ...prev,
+      order_amount: value,
+      salary_rate: String(result.rate),
+      staff_salary: value ? String(result.salary) : "",
     }));
   }
 
@@ -539,12 +606,26 @@ export default function XYAdminSalaryPage() {
   }
 
   function autoCalculateSalary() {
-    const amount = numberValue(orderForm.order_amount);
-    const rate = numberValue(orderForm.salary_rate);
+    if (!orderForm.discord_id) {
+      alert("請先選擇員工");
+      return;
+    }
+
+    if (!orderForm.order_amount) {
+      alert("請先輸入訂單金額");
+      return;
+    }
+
+    const result = calculateRuleSalary(
+      orderForm.discord_id,
+      orderForm.order_amount,
+      orderForm.id
+    );
 
     setOrderForm((prev) => ({
       ...prev,
-      staff_salary: String(Math.round(amount * (rate / 100))),
+      salary_rate: String(result.rate),
+      staff_salary: String(result.salary),
     }));
   }
 
@@ -576,7 +657,6 @@ export default function XYAdminSalaryPage() {
       ...makeEmptyOrderForm(),
       discord_id: firstStaff?.discord_id || "",
       staff_name: firstStaff ? getDisplayName(firstStaff) : "",
-      salary_rate: firstStaff ? String(getCommissionRate(firstStaff)) : "90",
     });
   }
 
@@ -589,7 +669,7 @@ export default function XYAdminSalaryPage() {
       staff_name: firstStaff ? getDisplayName(firstStaff) : "",
     });
   }
-    async function saveOrder() {
+  async function saveOrder() {
     if (!orderForm.discord_id) {
       alert("請選擇員工");
       return;
@@ -606,17 +686,22 @@ export default function XYAdminSalaryPage() {
     }
 
     const orderAmount = numberValue(orderForm.order_amount);
-    const salaryRate = numberValue(orderForm.salary_rate);
-    const staffSalary = orderForm.staff_salary
-      ? numberValue(orderForm.staff_salary)
-      : Math.round(orderAmount * (salaryRate / 100));
-    const bonusAmount = numberValue(orderForm.bonus_amount);
-    const calculatedPlatformIncome = orderAmount - staffSalary - bonusAmount;
 
     if (orderAmount <= 0) {
       alert("請輸入有效的訂單金額");
       return;
     }
+
+    const ruleResult = calculateRuleSalary(
+      orderForm.discord_id,
+      orderForm.order_amount,
+      orderForm.id
+    );
+
+    const salaryRate = ruleResult.rate;
+    const staffSalary = ruleResult.salary;
+    const bonusAmount = numberValue(orderForm.bonus_amount);
+    const calculatedPlatformIncome = orderAmount - staffSalary - bonusAmount;
 
     setSavingOrder(true);
 
@@ -818,6 +903,100 @@ export default function XYAdminSalaryPage() {
     await loadAll();
   }
 
+  function hasMonthlyBenefitBonus(discordId: string, description: string) {
+    return bonuses.some(
+      (bonus) =>
+        bonus.discord_id === discordId &&
+        String(bonus.description || "").includes(description)
+    );
+  }
+
+  async function generateMonthlyBenefits() {
+    const ok = window.confirm(
+      `確定要產生 ${selectedMonth} 的福利獎金嗎？\n\n規則：\n1. 當月累積薪水 > 5000，發 250 元，每月一次。\n2. 生日月份符合本月，發 200 元，每月一次。`
+    );
+
+    if (!ok) return;
+
+    setGeneratingBenefits(true);
+
+    const selectedMonthNumber = getSelectedMonthNumber(selectedMonth);
+    const rows: any[] = [];
+
+    for (const staff of staffList) {
+      if (!staff.discord_id) continue;
+      if (staff.is_active === false) continue;
+
+      const staffName = getDisplayName(staff);
+
+      const staffOrders = orders.filter(
+        (order) => order.discord_id === staff.discord_id
+      );
+
+      const monthSalary = staffOrders.reduce(
+        (sum, order) =>
+          sum +
+          Number(order.staff_salary || 0) +
+          Number(order.bonus_amount || 0),
+        0
+      );
+
+      const salaryBenefitDescription = `每月薪資達標獎金｜${selectedMonth}`;
+      const birthdayBenefitDescription = `生日禮金｜${selectedMonth}`;
+
+      if (
+        monthSalary > 5000 &&
+        !hasMonthlyBenefitBonus(staff.discord_id, salaryBenefitDescription)
+      ) {
+        rows.push({
+          discord_id: staff.discord_id,
+          staff_name: staffName,
+          bonus_type: "福利獎金",
+          description: salaryBenefitDescription,
+          amount: 250,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      const birthdayMonth = getBirthdayMonth(staff);
+
+      if (
+        birthdayMonth === selectedMonthNumber &&
+        !hasMonthlyBenefitBonus(staff.discord_id, birthdayBenefitDescription)
+      ) {
+        rows.push({
+          discord_id: staff.discord_id,
+          staff_name: staffName,
+          bonus_type: "生日禮金",
+          description: birthdayBenefitDescription,
+          amount: 200,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    if (rows.length === 0) {
+      setGeneratingBenefits(false);
+      alert("目前沒有需要新增的福利獎金，或本月已經新增過。");
+      return;
+    }
+
+    const { error } = await supabase.from("xy_players_bonus").insert(rows);
+
+    setGeneratingBenefits(false);
+
+    if (error) {
+      console.error("generate xy benefits error:", error);
+      alert(`產生福利獎金失敗：${error.message}`);
+      return;
+    }
+
+    alert(`已新增 ${rows.length} 筆福利獎金`);
+    await loadAll();
+  }
+
   if (checking) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#fff7ed]">
@@ -854,7 +1033,7 @@ export default function XYAdminSalaryPage() {
               </h1>
 
               <p className="mt-2 text-sm text-slate-500">
-                新增訂單、修改薪資、建立獎金扣除、查詢發薪狀態與批次標記已發薪。
+                固定 75%，當月接單滿 7000 變 80%，單筆大單會自動提高該筆抽成。
               </p>
             </div>
 
@@ -877,6 +1056,30 @@ export default function XYAdminSalaryPage() {
           <StatCard title="預估平台收入" value={money(platformIncome)} />
         </section>
 
+        <section className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
+                <Sparkles size={20} className="text-orange-500" />
+                本月福利獎金
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                當月累積薪水大於 5000 自動補 250；生日月份自動補 200，同月份同員工只會新增一次。
+              </p>
+            </div>
+
+            <button
+              onClick={generateMonthlyBenefits}
+              disabled={generatingBenefits || loading}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-amber-200 hover:bg-amber-600 disabled:opacity-60"
+            >
+              <Sparkles size={16} />
+              {generatingBenefits ? "產生中..." : `產生 ${selectedMonth} 福利獎金`}
+            </button>
+          </div>
+        </section>
+
         <section className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
           <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -887,7 +1090,7 @@ export default function XYAdminSalaryPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  XY 不用選遊戲，項目名稱可手動輸入，例如：陪玩薪資、陪聊薪資、活動薪資。
+                  抽成會依 XY 規則自動計算，不需要手動選遊戲。
                 </p>
               </div>
 
@@ -951,36 +1154,28 @@ export default function XYAdminSalaryPage() {
                   type="number"
                   min="0"
                   value={orderForm.order_amount}
-                  onChange={(event) =>
-                    updateOrderForm("order_amount", event.target.value)
-                  }
+                  onChange={(event) => handleOrderAmountChange(event.target.value)}
                   placeholder="例如：1000"
                 />
               </Field>
 
-              <Field label="抽成％">
+              <Field label="自動抽成％">
                 <input
                   type="number"
-                  min="0"
-                  max="100"
                   value={orderForm.salary_rate}
-                  onChange={(event) =>
-                    updateOrderForm("salary_rate", event.target.value)
-                  }
-                  placeholder="例如：90"
+                  readOnly
+                  className="cursor-not-allowed bg-slate-50"
                 />
               </Field>
-
               <Field label="員工薪資">
                 <div className="grid gap-2 md:grid-cols-[1fr_auto]">
                   <input
                     type="number"
                     min="0"
                     value={orderForm.staff_salary}
-                    onChange={(event) =>
-                      updateOrderForm("staff_salary", event.target.value)
-                    }
-                    placeholder="可手動填，也可自動計算"
+                    readOnly
+                    className="cursor-not-allowed bg-slate-50"
+                    placeholder="系統自動計算"
                   />
 
                   <button
@@ -988,7 +1183,7 @@ export default function XYAdminSalaryPage() {
                     onClick={autoCalculateSalary}
                     className="rounded-2xl border border-orange-100 px-4 py-2 text-sm font-bold text-orange-600 hover:bg-orange-50"
                   >
-                    自動算
+                    重新計算
                   </button>
                 </div>
               </Field>
@@ -1016,6 +1211,19 @@ export default function XYAdminSalaryPage() {
                 </select>
               </Field>
 
+              <div className="md:col-span-2 rounded-2xl border border-orange-100 bg-orange-50/60 p-4">
+                <p className="text-sm font-black text-orange-700">
+                  XY 抽成規則
+                </p>
+
+                <div className="mt-2 space-y-1 text-sm font-semibold text-slate-600">
+                  <p>基礎抽成：75%</p>
+                  <p>當月接單金額累積滿 7000：抽成 80%</p>
+                  <p>如果原本 75%，單筆金額大於 4999：該筆 80%</p>
+                  <p>如果原本 80%，單筆金額大於 4999：該筆 82%</p>
+                </div>
+              </div>
+
               <div className="md:col-span-2">
                 <button
                   onClick={saveOrder}
@@ -1032,6 +1240,7 @@ export default function XYAdminSalaryPage() {
               </div>
             </div>
           </div>
+
           <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
             <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
               <Gift size={20} className="text-orange-500" />
@@ -1068,6 +1277,8 @@ export default function XYAdminSalaryPage() {
                   <option value="扣除">扣除</option>
                   <option value="補薪">補薪</option>
                   <option value="活動獎勵">活動獎勵</option>
+                  <option value="福利獎金">福利獎金</option>
+                  <option value="生日禮金">生日禮金</option>
                   <option value="其他">其他</option>
                 </select>
               </Field>

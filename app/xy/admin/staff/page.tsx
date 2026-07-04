@@ -6,6 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
   ArrowLeft,
+  CalendarHeart,
   Loader2,
   RefreshCw,
   Save,
@@ -23,6 +24,7 @@ type Staff = {
   real_name?: string | null;
   gender?: string | null;
   birthday?: string | null;
+  birthday_month?: number | null;
   bank_name?: string | null;
   bank_account?: string | null;
   salary_channel_id?: string | null;
@@ -30,8 +32,6 @@ type Staff = {
   is_active?: boolean | null;
   is_online?: boolean | null;
   can_take_order?: boolean | null;
-  commission_tier?: string | null;
-  commission_note?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -41,11 +41,10 @@ type StaffForm = {
   real_name: string;
   gender: string;
   birthday: string;
+  birthday_month: string;
   bank_name: string;
   bank_account: string;
   salary_channel_id: string;
-  commission_tier: string;
-  commission_note: string;
   is_active: boolean;
   is_online: boolean;
   can_take_order: boolean;
@@ -63,20 +62,30 @@ function getDisplayName(staff: Staff | null) {
   );
 }
 
-function getCommissionTierLabel(value?: string | null) {
-  if (value === "rate_80") return "80%｜9月後基準";
-  if (value === "rate_85") return "85%｜接單達標";
-  if (value === "rate_90") return "90%｜特別設定";
-  if (value === "manager_95") return "95%｜主管津貼";
-  return "自動判定";
+function getBirthdayMonth(staff: Staff | null) {
+  if (!staff) return null;
+
+  if (
+    staff.birthday_month &&
+    staff.birthday_month >= 1 &&
+    staff.birthday_month <= 12
+  ) {
+    return staff.birthday_month;
+  }
+
+  if (!staff.birthday) return null;
+
+  const date = new Date(staff.birthday);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.getMonth() + 1;
 }
 
-function getCommissionTierRank(value?: string | null) {
-  if (value === "manager_95") return 95;
-  if (value === "rate_90") return 90;
-  if (value === "rate_85") return 85;
-  if (value === "rate_80") return 80;
-  return 0;
+function getBirthdayMonthLabel(staff: Staff | null) {
+  const month = getBirthdayMonth(staff);
+
+  return month ? `${month} 月` : "未填寫";
 }
 
 function getDiscordIdFromSession(session: any) {
@@ -99,11 +108,10 @@ function makeForm(staff: Staff | null): StaffForm {
     real_name: staff?.real_name || "",
     gender: staff?.gender || "",
     birthday: staff?.birthday || "",
+    birthday_month: staff?.birthday_month ? String(staff.birthday_month) : "",
     bank_name: staff?.bank_name || "",
     bank_account: staff?.bank_account || "",
     salary_channel_id: staff?.salary_channel_id || "",
-    commission_tier: staff?.commission_tier || "auto",
-    commission_note: staff?.commission_note || "",
     is_active: staff?.is_active !== false,
     is_online: Boolean(staff?.is_online),
     can_take_order: staff?.can_take_order !== false,
@@ -117,7 +125,7 @@ export default function XYAdminStaffPage() {
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [form, setForm] = useState<StaffForm>(makeForm(null));
   const [keyword, setKeyword] = useState("");
-  const [salarySort, setSalarySort] = useState("created_desc");
+  const [sortMode, setSortMode] = useState("created_desc");
   const [saving, setSaving] = useState(false);
 
   const filteredStaff = useMemo(() => {
@@ -132,7 +140,7 @@ export default function XYAdminStaffPage() {
           staff.display_name,
           staff.real_name,
           staff.salary_channel_id,
-          getCommissionTierLabel(staff.commission_tier),
+          getBirthdayMonthLabel(staff),
         ]
           .filter(Boolean)
           .join(" ")
@@ -142,57 +150,40 @@ export default function XYAdminStaffPage() {
       });
     }
 
-    if (salarySort === "tier_auto") {
-      list = list.filter(
-        (staff) => !staff.commission_tier || staff.commission_tier === "auto"
-      );
-    }
-
-    if (salarySort === "tier_80") {
-      list = list.filter((staff) => staff.commission_tier === "rate_80");
-    }
-
-    if (salarySort === "tier_85") {
-      list = list.filter((staff) => staff.commission_tier === "rate_85");
-    }
-
-    if (salarySort === "tier_90") {
-      list = list.filter((staff) => staff.commission_tier === "rate_90");
-    }
-
-    if (salarySort === "tier_95") {
-      list = list.filter((staff) => staff.commission_tier === "manager_95");
-    }
-
-    if (salarySort === "commission_desc") {
-      list.sort(
-        (a, b) =>
-          getCommissionTierRank(b.commission_tier) -
-          getCommissionTierRank(a.commission_tier)
-      );
-    }
-
-    if (salarySort === "commission_asc") {
-      list.sort(
-        (a, b) =>
-          getCommissionTierRank(a.commission_tier) -
-          getCommissionTierRank(b.commission_tier)
-      );
-    }
-
-    if (salarySort === "name_asc") {
+    if (sortMode === "name_asc") {
       list.sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b)));
     }
 
-    if (salarySort === "name_desc") {
+    if (sortMode === "name_desc") {
       list.sort((a, b) => getDisplayName(b).localeCompare(getDisplayName(a)));
     }
 
+    if (sortMode === "birthday_asc") {
+      list.sort((a, b) => (getBirthdayMonth(a) || 99) - (getBirthdayMonth(b) || 99));
+    }
+
+    if (sortMode === "birthday_desc") {
+      list.sort((a, b) => (getBirthdayMonth(b) || 0) - (getBirthdayMonth(a) || 0));
+    }
+
+    if (sortMode === "online_first") {
+      list.sort((a, b) => Number(Boolean(b.is_online)) - Number(Boolean(a.is_online)));
+    }
+
+    if (sortMode === "active_first") {
+      list.sort(
+        (a, b) => Number(a.is_active !== false) - Number(b.is_active !== false)
+      );
+    }
+
     return list;
-  }, [staffList, keyword, salarySort]);
+  }, [staffList, keyword, sortMode]);
 
   const activeCount = staffList.filter((staff) => staff.is_active !== false).length;
   const onlineCount = staffList.filter((staff) => staff.is_online).length;
+  const birthdayFilledCount = staffList.filter(
+    (staff) => getBirthdayMonth(staff) !== null
+  ).length;
 
   useEffect(() => {
     boot();
@@ -291,6 +282,20 @@ export default function XYAdminStaffPage() {
   async function saveStaff() {
     if (!selectedStaff) return;
 
+    const birthdayMonthNumber = form.birthday_month
+      ? Number(form.birthday_month)
+      : null;
+
+    if (
+      birthdayMonthNumber !== null &&
+      (!Number.isInteger(birthdayMonthNumber) ||
+        birthdayMonthNumber < 1 ||
+        birthdayMonthNumber > 12)
+    ) {
+      alert("生日月份請選擇 1 到 12 月");
+      return;
+    }
+
     setSaving(true);
 
     const { data, error } = await supabase
@@ -300,11 +305,10 @@ export default function XYAdminStaffPage() {
         real_name: form.real_name || null,
         gender: form.gender || null,
         birthday: form.birthday || null,
+        birthday_month: birthdayMonthNumber,
         bank_name: form.bank_name || null,
         bank_account: form.bank_account || null,
         salary_channel_id: form.salary_channel_id || null,
-        commission_tier: form.commission_tier || "auto",
-        commission_note: form.commission_note || null,
         is_active: form.is_active,
         is_online: form.is_online,
         can_take_order: form.can_take_order,
@@ -372,7 +376,7 @@ export default function XYAdminStaffPage() {
               </h1>
 
               <p className="mt-2 text-sm text-slate-500">
-                管理員工資料、上下線狀態、抽成檔位與薪資頻道。
+                管理員工資料、生日月份、上下線狀態與薪資頻道。
               </p>
             </div>
 
@@ -387,10 +391,11 @@ export default function XYAdminStaffPage() {
           </div>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-4">
           <StatCard title="員工總數" value={`${staffList.length} 人`} />
           <StatCard title="啟用中" value={`${activeCount} 人`} />
           <StatCard title="目前上線" value={`${onlineCount} 人`} />
+          <StatCard title="已填生日月份" value={`${birthdayFilledCount} 人`} />
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[0.85fr_1.4fr]">
@@ -406,27 +411,24 @@ export default function XYAdminStaffPage() {
                 <input
                   value={keyword}
                   onChange={(event) => setKeyword(event.target.value)}
-                  placeholder="搜尋名稱、Discord ID、頻道 ID、薪資檔位"
+                  placeholder="搜尋名稱、Discord ID、頻道 ID、生日月份"
                   className="min-h-0 flex-1 border-none bg-transparent p-0 text-sm outline-none focus:shadow-none"
                 />
               </div>
 
               <div className="mt-3">
                 <select
-                  value={salarySort}
-                  onChange={(event) => setSalarySort(event.target.value)}
+                  value={sortMode}
+                  onChange={(event) => setSortMode(event.target.value)}
                   className="w-full rounded-2xl border border-orange-100 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
                 >
-                  <option value="created_desc">薪資排序：最新建立</option>
-                  <option value="commission_desc">薪資排序：抽成高到低</option>
-                  <option value="commission_asc">薪資排序：抽成低到高</option>
+                  <option value="created_desc">排序：最新建立</option>
                   <option value="name_asc">名稱排序：A 到 Z</option>
                   <option value="name_desc">名稱排序：Z 到 A</option>
-                  <option value="tier_auto">只看：自動判定</option>
-                  <option value="tier_80">只看：80%</option>
-                  <option value="tier_85">只看：85%</option>
-                  <option value="tier_90">只看：90%</option>
-                  <option value="tier_95">只看：主管津貼 95%</option>
+                  <option value="birthday_asc">生日月份：1 月到 12 月</option>
+                  <option value="birthday_desc">生日月份：12 月到 1 月</option>
+                  <option value="online_first">上線優先</option>
+                  <option value="active_first">啟用優先</option>
                 </select>
               </div>
             </div>
@@ -478,9 +480,9 @@ export default function XYAdminStaffPage() {
                               {staff.discord_id}
                             </p>
 
-                            <p className="mt-1 truncate text-xs font-bold text-orange-600">
-                              薪資檔位：
-                              {getCommissionTierLabel(staff.commission_tier)}
+                            <p className="mt-1 flex items-center gap-1 truncate text-xs font-bold text-orange-600">
+                              <CalendarHeart size={13} />
+                              生日月份：{getBirthdayMonthLabel(staff)}
                             </p>
                           </div>
 
@@ -575,7 +577,7 @@ export default function XYAdminStaffPage() {
                   </select>
                 </Field>
 
-                <Field label="生日">
+                <Field label="生日日期">
                   <input
                     type="date"
                     value={form.birthday}
@@ -583,6 +585,26 @@ export default function XYAdminStaffPage() {
                       updateForm("birthday", event.target.value)
                     }
                   />
+                </Field>
+
+                <Field label="生日月份">
+                  <select
+                    value={form.birthday_month}
+                    onChange={(event) =>
+                      updateForm("birthday_month", event.target.value)
+                    }
+                  >
+                    <option value="">未填寫</option>
+                    {Array.from({ length: 12 }).map((_, index) => {
+                      const month = index + 1;
+
+                      return (
+                        <option key={month} value={String(month)}>
+                          {month} 月
+                        </option>
+                      );
+                    })}
+                  </select>
                 </Field>
 
                 <Field label="銀行名稱">
@@ -615,31 +637,18 @@ export default function XYAdminStaffPage() {
                   />
                 </Field>
 
-                <Field label="抽成檔位">
-                  <select
-                    value={form.commission_tier}
-                    onChange={(event) =>
-                      updateForm("commission_tier", event.target.value)
-                    }
-                  >
-                    <option value="auto">自動判定</option>
-                    <option value="rate_80">80%｜9月後基準</option>
-                    <option value="rate_85">85%｜接單達標</option>
-                    <option value="rate_90">90%｜特別設定</option>
-                    <option value="manager_95">主管津貼 95%</option>
-                  </select>
-                </Field>
+                <div className="md:col-span-2 rounded-2xl border border-orange-100 bg-orange-50/60 p-4">
+                  <p className="text-sm font-black text-orange-700">
+                    XY 抽成規則
+                  </p>
 
-                <div className="md:col-span-2">
-                  <Field label="抽成備註">
-                    <textarea
-                      value={form.commission_note}
-                      onChange={(event) =>
-                        updateForm("commission_note", event.target.value)
-                      }
-                      placeholder="可填寫後台備註，例如：主管津貼、特殊合約、活動期間"
-                    />
-                  </Field>
+                  <div className="mt-2 space-y-1 text-sm font-semibold text-slate-600">
+                    <p>基礎抽成固定 75%。</p>
+                    <p>當月接單金額滿 7000 後，基礎抽成變 80%。</p>
+                    <p>若單筆金額大於 4999，75% 的該筆變 80%，80% 的該筆變 82%。</p>
+                    <p>當月累積薪水大於 5000，另得 250 元，每月一次。</p>
+                    <p>生日月份當月另得 200 元生日禮金，每月一次。</p>
+                  </div>
                 </div>
 
                 <div className="grid gap-3 md:col-span-2 md:grid-cols-3">
