@@ -91,7 +91,6 @@ type BonusForm = {
 
 function getCurrentMonthInput() {
   const now = new Date();
-
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
@@ -116,8 +115,6 @@ function getMonthRange(monthText: string) {
   );
 
   return {
-    start,
-    end,
     startIso: start.toISOString(),
     endIso: end.toISOString(),
   };
@@ -127,7 +124,6 @@ function getTodayDatetimeInput() {
   const now = new Date();
   const offsetMs = now.getTimezoneOffset() * 60 * 1000;
   const local = new Date(now.getTime() - offsetMs);
-
   return local.toISOString().slice(0, 16);
 }
 
@@ -160,7 +156,6 @@ function money(value: number | string | null | undefined) {
 
 function numberValue(value: string | number | null | undefined) {
   const n = Number(value || 0);
-
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -228,7 +223,11 @@ function getOrderSourceDate(order: SalaryOrder) {
 }
 
 function getBirthdayMonth(staff: Staff) {
-  if (staff.birthday_month && staff.birthday_month >= 1 && staff.birthday_month <= 12) {
+  if (
+    staff.birthday_month &&
+    staff.birthday_month >= 1 &&
+    staff.birthday_month <= 12
+  ) {
     return staff.birthday_month;
   }
 
@@ -281,7 +280,6 @@ function makeOrderNo() {
 
 function getSelectedMonthNumber(monthText: string) {
   const month = Number(monthText.split("-")[1] || 0);
-
   return month >= 1 && month <= 12 ? month : new Date().getMonth() + 1;
 }
 
@@ -338,7 +336,6 @@ export default function XYAdminSalaryPage() {
 
   const filteredBonuses = useMemo(() => {
     if (staffFilter === "all") return bonuses;
-
     return bonuses.filter((bonus) => bonus.discord_id === staffFilter);
   }, [bonuses, staffFilter]);
 
@@ -513,7 +510,6 @@ export default function XYAdminSalaryPage() {
       .filter((order) => {
         if (order.discord_id !== discordId) return false;
         if (excludeOrderId && order.id === excludeOrderId) return false;
-
         return true;
       })
       .reduce((sum, order) => sum + getOrderAmount(order), 0);
@@ -545,10 +541,7 @@ export default function XYAdminSalaryPage() {
     const rate = calculateRuleRate(discordId, orderAmount, excludeOrderId);
     const salary = Math.round(orderAmount * (rate / 100));
 
-    return {
-      rate,
-      salary,
-    };
+    return { rate, salary };
   }
 
   function updateOrderForm<K extends keyof OrderForm>(
@@ -644,10 +637,7 @@ export default function XYAdminSalaryPage() {
       order_finished_at: toDatetimeInput(getOrderSourceDate(order)),
     });
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function resetOrderForm() {
@@ -669,6 +659,7 @@ export default function XYAdminSalaryPage() {
       staff_name: firstStaff ? getDisplayName(firstStaff) : "",
     });
   }
+
   async function saveOrder() {
     if (!orderForm.discord_id) {
       alert("請選擇員工");
@@ -1167,6 +1158,7 @@ export default function XYAdminSalaryPage() {
                   className="cursor-not-allowed bg-slate-50"
                 />
               </Field>
+
               <Field label="員工薪資">
                 <div className="grid gap-2 md:grid-cols-[1fr_auto]">
                   <input
@@ -1426,27 +1418,18 @@ export default function XYAdminSalaryPage() {
                   {filteredOrders.map((order) => (
                     <tr key={order.id}>
                       <td>{formatDateTime(getOrderSourceDate(order))}</td>
-
                       <td>{order.order_no || order.order_id || "-"}</td>
-
                       <td>{getOrderStaffName(order)}</td>
-
                       <td>{getOrderCustomer(order)}</td>
-
                       <td>{getOrderService(order)}</td>
-
                       <td className="font-bold text-slate-700">
                         {money(getOrderAmount(order))}
                       </td>
-
                       <td>{Number(order.salary_rate || 0)}%</td>
-
                       <td className="font-bold text-orange-600">
                         {money(order.staff_salary)}
                       </td>
-
                       <td>{money(order.bonus_amount)}</td>
-
                       <td>
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-bold ${
@@ -1458,7 +1441,6 @@ export default function XYAdminSalaryPage() {
                           {order.status || "未發薪"}
                         </span>
                       </td>
-
                       <td>
                         <div className="flex gap-2">
                           <button
@@ -1519,13 +1501,9 @@ export default function XYAdminSalaryPage() {
                   {filteredBonuses.map((bonus) => (
                     <tr key={bonus.id}>
                       <td>{formatDateTime(bonus.created_at)}</td>
-
                       <td>{bonus.staff_name || bonus.discord_id}</td>
-
                       <td>{bonus.bonus_type || "-"}</td>
-
                       <td>{bonus.description || "-"}</td>
-
                       <td
                         className={`font-bold ${
                           Number(bonus.amount || 0) < 0
@@ -1535,7 +1513,6 @@ export default function XYAdminSalaryPage() {
                       >
                         {money(bonus.amount)}
                       </td>
-
                       <td>
                         <button
                           onClick={() => deleteBonus(bonus)}
@@ -1561,7 +1538,6 @@ function StatCard({ title, value }: { title: string; value: string }) {
   return (
     <div className="rounded-[24px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
       <p className="text-sm font-bold text-orange-600">{title}</p>
-
       <p className="mt-3 text-2xl font-black text-slate-900">{value}</p>
     </div>
   );
