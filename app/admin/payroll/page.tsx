@@ -3,32 +3,28 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 import {
   ArrowLeft,
   Banknote,
-  CalendarDays,
-  Clipboard,
+  CheckCircle2,
+  Copy,
   Loader2,
   RefreshCw,
   Search,
+  UserRound,
+  WalletCards,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
-
-const XY_GUILD_ID =
-  process.env.NEXT_PUBLIC_XY_GUILD_ID ||
-  process.env.NEXT_PUBLIC_GUILD_ID ||
-  "1501098191813214312";
-const XY_PLAY_ORDER_FILTER =
-  `guild_id.eq.${XY_GUILD_ID},guild_id.is.null`;
 
 type Staff = {
-  id?: string;
+  id: string;
   discord_id: string;
   discord_name?: string | null;
   display_name?: string | null;
   real_name?: string | null;
   bank_name?: string | null;
   bank_account?: string | null;
+  avatar_url?: string | null;
   is_active?: boolean | null;
 };
 
@@ -36,11 +32,19 @@ type SalaryOrder = {
   id: string;
   discord_id?: string | null;
   staff_name?: string | null;
+  assigned_player?: string | null;
+  order_no?: string | null;
+  order_id?: string | null;
+  customer_name?: string | null;
+  service_name?: string | null;
+  order_amount?: number | null;
+  price?: number | null;
   staff_salary?: number | null;
   bonus_amount?: number | null;
   status?: string | null;
   order_finished_at?: string | null;
-  is_deleted?: boolean | null;
+  completed_at?: string | null;
+  created_at?: string | null;
 };
 
 type Bonus = {
@@ -50,217 +54,212 @@ type Bonus = {
   bonus_type?: string | null;
   description?: string | null;
   amount?: number | null;
+  status?: string | null;
   created_at?: string | null;
 };
 
 type PayrollRow = {
-  discordId: string;
-  staffName: string;
-  accountName: string;
-  bankName: string;
-  bankAccount: string;
-  salary: number;
-  bonus: number;
-  total: number;
-  orderCount: number;
-  bonusCount: number;
+  staff: Staff;
+  orders: SalaryOrder[];
+  bonuses: Bonus[];
+  orderSalary: number;
+  orderBonus: number;
+  extraBonus: number;
+  totalPay: number;
 };
 
-type SessionLike = {
-  user?: {
-    user_metadata?: Record<string, unknown>;
-    identities?: Array<{
-      identity_data?: {
-        sub?: unknown;
-        id?: unknown;
-      };
-    }>;
+function getCurrentMonthInput() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getMonthRange(monthText: string) {
+  const [yearText, monthValueText] = monthText.split("-");
+  const year = Number(yearText);
+  const monthValue = Number(monthValueText);
+
+  const source =
+    Number.isInteger(year) && Number.isInteger(monthValue) && monthValue >= 1
+      ? new Date(year, monthValue - 1, 1)
+      : new Date();
+
+  const start = new Date(source.getFullYear(), source.getMonth(), 1, 0, 0, 0);
+  const end = new Date(
+    source.getFullYear(),
+    source.getMonth() + 1,
+    0,
+    23,
+    59,
+    59
+  );
+
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
   };
-};
-
-function getTodayInput() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset();
-  const local = new Date(now.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 10);
-}
-
-function getMonthStartInput() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const offset = start.getTimezoneOffset();
-  const local = new Date(start.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 10);
-}
-
-function dateToStartIso(value: string) {
-  if (!value) return null;
-  return new Date(`${value}T00:00:00`).toISOString();
-}
-
-function dateToEndIso(value: string) {
-  if (!value) return null;
-  return new Date(`${value}T23:59:59`).toISOString();
 }
 
 function money(value: number | string | null | undefined) {
   return `$${Number(value || 0).toLocaleString("zh-TW")}`;
 }
 
-function getDisplayName(staff?: Staff | null, fallback?: string | null) {
-  return (
-    staff?.display_name ||
-    staff?.real_name ||
-    staff?.discord_name ||
-    fallback ||
-    staff?.discord_id ||
-    "未知員工"
-  );
-}
-
-function getAccountName(staff?: Staff | null, fallback?: string | null) {
-  return staff?.real_name || staff?.display_name || fallback || "-";
-}
-
-function stringValue(value: unknown) {
-  if (typeof value === "string" || typeof value === "number") {
-    return String(value);
-  }
-
-  return "";
-}
-
-function getDiscordIdFromSession(session: unknown) {
-  const user = (session as SessionLike | null)?.user;
+function getDiscordIdFromSession(session: any) {
+  const user = session?.user;
   const metadata = user?.user_metadata || {};
 
   return String(
-    stringValue(metadata.provider_id) ||
-      stringValue(metadata.sub) ||
-      stringValue(metadata.user_id) ||
-      stringValue(user?.identities?.[0]?.identity_data?.sub) ||
-      stringValue(user?.identities?.[0]?.identity_data?.id) ||
+    metadata.provider_id ||
+      metadata.sub ||
+      metadata.user_id ||
+      user?.identities?.[0]?.identity_data?.sub ||
+      user?.identities?.[0]?.identity_data?.id ||
       ""
   ).trim();
 }
 
-function buildCopyText(rows: PayrollRow[]) {
-  return rows
-    .map((row, index) => {
-      return [
-        `${index + 1}. ${row.staffName}`,
-        `戶名：${row.accountName}`,
-        `銀行：${row.bankName || "-"}`,
-        `帳號：${row.bankAccount || "-"}`,
-        `薪水：${money(row.salary)}`,
-        `獎金/扣除：${money(row.bonus)}`,
-        `應發：${money(row.total)}`,
-      ].join("\n");
-    })
-    .join("\n\n");
+function getDisplayName(staff: Staff | null | undefined) {
+  if (!staff) return "未知員工";
+
+  return (
+    staff.display_name ||
+    staff.real_name ||
+    staff.discord_name ||
+    staff.discord_id ||
+    "未知員工"
+  );
 }
 
-export default function AdminPayrollPage() {
+function formatDateTime(value?: string | null) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleString("zh-TW", {
+    hour12: true,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getOrderDate(order: SalaryOrder) {
+  return order.order_finished_at || order.completed_at || order.created_at || null;
+}
+
+function getOrderAmount(order: SalaryOrder) {
+  return Number(order.order_amount ?? order.price ?? 0);
+}
+
+export default function XYAdminPayrollPage() {
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(true);
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [orders, setOrders] = useState<SalaryOrder[]>([]);
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthInput());
+  const [staffFilter, setStaffFilter] = useState("all");
   const [keyword, setKeyword] = useState("");
-  const [startDate, setStartDate] = useState(getMonthStartInput());
-  const [endDate, setEndDate] = useState(getTodayInput());
+  const [markingPaid, setMarkingPaid] = useState(false);
+  const [copying, setCopying] = useState(false);
 
-  const rows = useMemo(() => {
-    const staffMap = new Map<string, Staff>();
-
-    for (const staff of staffList) {
-      if (staff.discord_id) {
-        staffMap.set(staff.discord_id, staff);
-      }
-    }
-
-    const rowMap = new Map<string, PayrollRow>();
-
-    function ensureRow(discordId: string, fallbackName?: string | null) {
-      const staff = staffMap.get(discordId);
-      const existing = rowMap.get(discordId);
-
-      if (existing) return existing;
-
-      const row: PayrollRow = {
-        discordId,
-        staffName: getDisplayName(staff, fallbackName),
-        accountName: getAccountName(staff, fallbackName),
-        bankName: staff?.bank_name || "",
-        bankAccount: staff?.bank_account || "",
-        salary: 0,
-        bonus: 0,
-        total: 0,
-        orderCount: 0,
-        bonusCount: 0,
-      };
-
-      rowMap.set(discordId, row);
-      return row;
-    }
-
-    for (const order of orders) {
-      const discordId = String(order.discord_id || "").trim();
-      if (!discordId) continue;
-
-      const row = ensureRow(discordId, order.staff_name);
-      row.salary += Number(order.staff_salary || 0);
-      row.bonus += Number(order.bonus_amount || 0);
-      row.orderCount += 1;
-    }
-
-    for (const bonus of bonuses) {
-      const discordId = String(bonus.discord_id || "").trim();
-      if (!discordId) continue;
-
-      const row = ensureRow(discordId, bonus.staff_name);
-      row.bonus += Number(bonus.amount || 0);
-      row.bonusCount += 1;
-    }
-
-    let result = Array.from(rowMap.values())
-      .map((row) => ({
-        ...row,
-        total: row.salary + row.bonus,
-      }))
-      .filter((row) => row.total > 0);
-
+  const payrollRows = useMemo(() => {
     const key = keyword.trim().toLowerCase();
-    if (key) {
-      result = result.filter((row) =>
-        [
-          row.discordId,
-          row.staffName,
-          row.accountName,
-          row.bankName,
-          row.bankAccount,
+
+    return staffList
+      .filter((staff) => {
+        if (staffFilter !== "all" && staff.discord_id !== staffFilter) {
+          return false;
+        }
+
+        if (!key) return true;
+
+        const text = [
+          staff.discord_id,
+          staff.discord_name,
+          staff.display_name,
+          staff.real_name,
+          staff.bank_name,
+          staff.bank_account,
         ]
           .filter(Boolean)
           .join(" ")
-          .toLowerCase()
-          .includes(key)
-      );
-    }
+          .toLowerCase();
 
-    return result.sort((a, b) => b.total - a.total);
-  }, [staffList, orders, bonuses, keyword]);
+        return text.includes(key);
+      })
+      .map((staff) => {
+        const staffOrders = orders.filter(
+          (order) => order.discord_id === staff.discord_id
+        );
 
-  const totals = useMemo(() => {
-    return {
-      staffCount: rows.length,
-      salary: rows.reduce((sum, row) => sum + row.salary, 0),
-      bonus: rows.reduce((sum, row) => sum + row.bonus, 0),
-      total: rows.reduce((sum, row) => sum + row.total, 0),
-    };
-  }, [rows]);
+        const staffBonuses = bonuses.filter(
+          (bonus) => bonus.discord_id === staff.discord_id
+        );
+
+        const orderSalary = staffOrders.reduce(
+          (sum, order) => sum + Number(order.staff_salary || 0),
+          0
+        );
+
+        const orderBonus = staffOrders.reduce(
+          (sum, order) => sum + Number(order.bonus_amount || 0),
+          0
+        );
+
+        const extraBonus = staffBonuses.reduce(
+          (sum, bonus) => sum + Number(bonus.amount || 0),
+          0
+        );
+
+        const totalPay = orderSalary + orderBonus + extraBonus;
+
+        return {
+          staff,
+          orders: staffOrders,
+          bonuses: staffBonuses,
+          orderSalary,
+          orderBonus,
+          extraBonus,
+          totalPay,
+        };
+      })
+      .filter((row) => row.totalPay !== 0);
+  }, [staffList, orders, bonuses, staffFilter, keyword]);
+
+  const totalOrderSalary = payrollRows.reduce(
+    (sum, row) => sum + row.orderSalary,
+    0
+  );
+
+  const totalOrderBonus = payrollRows.reduce(
+    (sum, row) => sum + row.orderBonus,
+    0
+  );
+
+  const totalExtraBonus = payrollRows.reduce(
+    (sum, row) => sum + row.extraBonus,
+    0
+  );
+
+  const totalPay = payrollRows.reduce((sum, row) => sum + row.totalPay, 0);
+
+  const totalOrderCount = payrollRows.reduce(
+    (sum, row) => sum + row.orders.length,
+    0
+  );
+
+  const totalBonusCount = payrollRows.reduce(
+    (sum, row) => sum + row.bonuses.length,
+    0
+  );
 
   useEffect(() => {
     boot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function boot() {
@@ -271,7 +270,7 @@ export default function AdminPayrollPage() {
       const session = data.session;
 
       if (!session) {
-        window.location.href = "/admin-login";
+        window.location.href = "/xy/admin-login";
         return;
       }
 
@@ -280,104 +279,199 @@ export default function AdminPayrollPage() {
       if (!discordId) {
         alert("無法取得 Discord ID，請重新登入。");
         await supabase.auth.signOut();
-        window.location.href = "/admin-login";
+        window.location.href = "/xy/admin-login";
         return;
       }
 
       const { data: admin, error } = await supabase
-        .from("admins")
+        .from("xy_admins")
         .select("*")
         .eq("discord_id", discordId)
         .eq("is_active", true)
         .maybeSingle();
 
-      if (error || !admin) {
-        alert(error ? "檢查後台權限失敗" : "你沒有後台管理權限");
-        window.location.href = "/staff";
+      if (error) {
+        console.error("check xy admin error:", error);
+        alert("檢查 XY 後台權限失敗");
+        window.location.href = "/xy/staff";
         return;
       }
 
-      await loadPayrollData();
+      if (!admin) {
+        alert("你沒有 XY 後台管理權限");
+        window.location.href = "/xy/staff";
+        return;
+      }
+
+      await loadPayroll();
     } catch (error) {
-      console.error("admin payroll boot error:", error);
-      alert("檢查後台權限失敗");
-      window.location.href = "/staff";
+      console.error("xy payroll boot error:", error);
+      alert("檢查 XY 後台權限失敗");
+      window.location.href = "/xy/staff";
     } finally {
       setChecking(false);
     }
   }
 
-  async function loadPayrollData() {
+  async function loadPayroll() {
     setLoading(true);
 
-    const startIso = dateToStartIso(startDate);
-    const endIso = dateToEndIso(endDate);
-
-    let orderQuery = supabase
-      .from("play_orders")
-      .select(
-        "id, discord_id, staff_name, staff_salary, bonus_amount, status, order_finished_at, is_deleted"
-      )
-      .or(XY_PLAY_ORDER_FILTER)
-      .or("is_deleted.eq.false,is_deleted.is.null")
-      .or("status.neq.已發薪,status.is.null")
-      .order("order_finished_at", { ascending: false });
-
-    if (startIso) orderQuery = orderQuery.gte("order_finished_at", startIso);
-    if (endIso) orderQuery = orderQuery.lte("order_finished_at", endIso);
-
-    let bonusQuery = supabase
-      .from("players_bonus")
-      .select("id, discord_id, staff_name, bonus_type, description, amount, created_at")
-      .order("created_at", { ascending: false });
-
-    if (startIso) bonusQuery = bonusQuery.gte("created_at", startIso);
-    if (endIso) bonusQuery = bonusQuery.lte("created_at", endIso);
+    const { startIso, endIso } = getMonthRange(selectedMonth);
 
     const [staffRes, orderRes, bonusRes] = await Promise.all([
       supabase
-        .from("players")
-        .select(
-          "id, discord_id, discord_name, display_name, real_name, bank_name, bank_account, is_active"
-        )
+        .from("xy_players")
+        .select("*")
         .order("created_at", { ascending: false }),
-      orderQuery,
-      bonusQuery,
+      supabase
+        .from("xy_play_orders")
+        .select("*")
+        .or("is_deleted.eq.false,is_deleted.is.null")
+        .or("status.neq.已發薪,status.is.null")
+        .gte("order_finished_at", startIso)
+        .lte("order_finished_at", endIso)
+        .order("order_finished_at", { ascending: false }),
+      supabase
+        .from("xy_players_bonus")
+        .select("*")
+        .or("status.neq.已發薪,status.is.null")
+        .gte("created_at", startIso)
+        .lte("created_at", endIso)
+        .order("created_at", { ascending: false }),
     ]);
 
     setLoading(false);
 
     if (staffRes.error) {
-      console.error("load staff error:", staffRes.error);
-      alert("讀取員工資料失敗");
-      return;
+      console.error("load xy staff error:", staffRes.error);
+      setStaffList([]);
+    } else {
+      setStaffList((staffRes.data || []) as Staff[]);
     }
 
     if (orderRes.error) {
-      console.error("load payroll orders error:", orderRes.error);
-      alert("讀取待發薪訂單失敗");
-      return;
+      console.error("load xy unpaid orders error:", orderRes.error);
+      alert(`讀取未發薪訂單失敗：${orderRes.error.message}`);
+      setOrders([]);
+    } else {
+      setOrders((orderRes.data || []) as SalaryOrder[]);
     }
 
     if (bonusRes.error) {
-      console.error("load payroll bonuses error:", bonusRes.error);
-      alert("讀取獎金 / 扣除失敗");
-      return;
+      console.error("load xy unpaid bonuses error:", bonusRes.error);
+      alert(
+        `讀取未發薪獎金失敗：${bonusRes.error.message}\n\n如果錯誤是找不到 status 欄位，請先在 Supabase 執行新增欄位 SQL。`
+      );
+      setBonuses([]);
+    } else {
+      setBonuses((bonusRes.data || []) as Bonus[]);
     }
-
-    setStaffList((staffRes.data || []) as Staff[]);
-    setOrders((orderRes.data || []) as SalaryOrder[]);
-    setBonuses((bonusRes.data || []) as Bonus[]);
   }
 
-  async function copyPayrollList() {
-    if (!rows.length) {
-      alert("目前沒有可複製的發薪資料");
+  function makePayrollText() {
+    const lines = [
+      `XY 陪玩發薪預覽`,
+      `月份：${selectedMonth}`,
+      `總發薪：${money(totalPay)}`,
+      "",
+      "姓名｜銀行｜帳號｜薪水｜訂單獎金｜額外獎金/扣除｜應發合計",
+      ...payrollRows.map((row) => {
+        const staff = row.staff;
+
+        return [
+          getDisplayName(staff),
+          staff.bank_name || "未填銀行",
+          staff.bank_account || "未填帳號",
+          money(row.orderSalary),
+          money(row.orderBonus),
+          money(row.extraBonus),
+          money(row.totalPay),
+        ].join("｜");
+      }),
+    ];
+
+    return lines.join("\n");
+  }
+
+  async function copyPayrollText() {
+    setCopying(true);
+
+    try {
+      await navigator.clipboard.writeText(makePayrollText());
+      alert("已複製發薪預覽文字");
+    } catch (error) {
+      console.error("copy payroll text error:", error);
+      alert("複製失敗，請改用手動選取。");
+    } finally {
+      setCopying(false);
+    }
+  }
+
+  async function markCurrentPayrollPaid() {
+    if (payrollRows.length === 0) {
+      alert("目前沒有可發薪資料。");
       return;
     }
 
-    await navigator.clipboard.writeText(buildCopyText(rows));
-    alert("已複製發薪清單");
+    const ok = window.confirm(
+      `確定要將目前畫面中的 ${payrollRows.length} 位員工標記為已發薪嗎？\n\n包含：${totalOrderCount} 筆訂單、${totalBonusCount} 筆獎金 / 扣除\n總金額：${money(totalPay)}`
+    );
+
+    if (!ok) return;
+
+    setMarkingPaid(true);
+
+    const now = new Date().toISOString();
+
+    const orderIds = payrollRows.flatMap((row) =>
+      row.orders.map((order) => order.id)
+    );
+
+    const bonusIds = payrollRows.flatMap((row) =>
+      row.bonuses.map((bonus) => bonus.id)
+    );
+
+    const updateJobs = [];
+
+    if (orderIds.length > 0) {
+      updateJobs.push(
+        supabase
+          .from("xy_play_orders")
+          .update({
+            status: "已發薪",
+            paid_at: now,
+            updated_at: now,
+          })
+          .in("id", orderIds)
+      );
+    }
+
+    if (bonusIds.length > 0) {
+      updateJobs.push(
+        supabase
+          .from("xy_players_bonus")
+          .update({
+            status: "已發薪",
+            paid_at: now,
+            updated_at: now,
+          })
+          .in("id", bonusIds)
+      );
+    }
+
+    const results = await Promise.all(updateJobs);
+    setMarkingPaid(false);
+
+    const firstError = results.find((result) => result.error)?.error;
+
+    if (firstError) {
+      console.error("mark payroll paid error:", firstError);
+      alert(`標記已發薪失敗：${firstError.message}`);
+      return;
+    }
+
+    alert("已標記為已發薪");
+    await loadPayroll();
   }
 
   if (checking) {
@@ -386,7 +480,7 @@ export default function AdminPayrollPage() {
         <div className="rounded-[28px] border border-orange-100 bg-white px-8 py-7 text-center shadow-sm shadow-orange-100">
           <Loader2 className="mx-auto animate-spin text-orange-500" size={34} />
           <p className="mt-4 text-sm font-semibold text-slate-600">
-            正在檢查後台權限...
+            正在檢查 XY 後台權限...
           </p>
         </div>
       </main>
@@ -397,14 +491,14 @@ export default function AdminPayrollPage() {
     <main className="min-h-screen bg-[#fff7ed] px-5 py-6 text-slate-900">
       <div className="mx-auto max-w-7xl space-y-5">
         <header className="rounded-[30px] border border-orange-100 bg-white px-6 py-5 shadow-sm shadow-orange-100">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <Link
-                href="/admin"
+                href="/xy/admin"
                 className="inline-flex items-center gap-2 text-sm font-bold text-orange-600 hover:text-orange-700"
               >
                 <ArrowLeft size={16} />
-                回管理後台
+                回 XY 管理後台
               </Link>
 
               <p className="mt-4 text-sm font-bold text-orange-600">
@@ -414,21 +508,31 @@ export default function AdminPayrollPage() {
               <h1 className="mt-1 text-2xl font-black text-slate-900 md:text-3xl">
                 發薪模式
               </h1>
+
+              <p className="mt-2 text-sm text-slate-500">
+                預覽本月每位有薪水要發的員工，包含姓名、銀行、帳號、薪水與獎金。
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <button
-                onClick={copyPayrollList}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-orange-100 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-orange-50"
+              <Link
+                href="/xy/admin/staff"
+                className="inline-flex items-center justify-center rounded-full border border-orange-100 bg-white px-4 py-2 text-sm font-bold text-orange-600 hover:bg-orange-50"
               >
-                <Clipboard size={16} />
-                複製清單
-              </button>
+                員工管理
+              </Link>
+
+              <Link
+                href="/xy/admin/salary"
+                className="inline-flex items-center justify-center rounded-full border border-orange-100 bg-white px-4 py-2 text-sm font-bold text-orange-600 hover:bg-orange-50"
+              >
+                薪資總表
+              </Link>
 
               <button
-                onClick={loadPayrollData}
+                onClick={loadPayroll}
                 disabled={loading}
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
               >
                 <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
                 重新整理
@@ -437,118 +541,166 @@ export default function AdminPayrollPage() {
           </div>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-4">
-          <StatCard title="待發人數" value={`${totals.staffCount} 人`} />
-          <StatCard title="薪水" value={money(totals.salary)} />
-          <StatCard title="獎金 / 扣除" value={money(totals.bonus)} />
-          <StatCard title="應發總額" value={money(totals.total)} />
+        <section className="grid gap-4 md:grid-cols-5">
+          <StatCard title="待發員工" value={`${payrollRows.length} 人`} />
+          <StatCard title="待發訂單" value={`${totalOrderCount} 筆`} />
+          <StatCard title="訂單薪水" value={money(totalOrderSalary)} />
+          <StatCard title="獎金 / 扣除" value={money(totalOrderBonus + totalExtraBonus)} />
+          <StatCard title="應發合計" value={money(totalPay)} />
         </section>
 
         <section className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
-          <div className="grid gap-4 md:grid-cols-4">
-            <Field label="開始日期">
+          <div className="grid gap-3 lg:grid-cols-[180px_220px_1fr_auto_auto]">
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="rounded-2xl border border-orange-100 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none"
+            />
+
+            <select
+              value={staffFilter}
+              onChange={(event) => setStaffFilter(event.target.value)}
+              className="rounded-2xl border border-orange-100 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none"
+            >
+              <option value="all">全部員工</option>
+              {staffList.map((staff) => (
+                <option key={staff.id} value={staff.discord_id}>
+                  {getDisplayName(staff)}
+                </option>
+              ))}
+            </select>
+
+            <div className="flex items-center gap-2 rounded-2xl border border-orange-100 bg-orange-50/60 px-3 py-2">
+              <Search size={17} className="text-orange-500" />
               <input
-                type="date"
-                value={startDate}
-                onChange={(event) => setStartDate(event.target.value)}
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                placeholder="搜尋姓名、Discord ID、銀行、帳號"
+                className="min-h-0 flex-1 border-none bg-transparent p-0 text-sm outline-none focus:shadow-none"
               />
-            </Field>
-
-            <Field label="結束日期">
-              <input
-                type="date"
-                value={endDate}
-                onChange={(event) => setEndDate(event.target.value)}
-              />
-            </Field>
-
-            <Field label="搜尋">
-              <div className="flex items-center gap-2 rounded-xl border border-orange-100 bg-orange-50/60 px-3">
-                <Search size={16} className="text-orange-500" />
-                <input
-                  value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
-                  placeholder="姓名、銀行、帳號"
-                  className="min-h-0 flex-1 border-none bg-transparent p-0 focus:shadow-none"
-                />
-              </div>
-            </Field>
-
-            <div className="flex items-end">
-              <button
-                onClick={loadPayrollData}
-                disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-60"
-              >
-                <CalendarDays size={16} />
-                查詢
-              </button>
             </div>
+
+            <button
+              onClick={loadPayroll}
+              disabled={loading}
+              className="rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
+            >
+              查詢
+            </button>
+
+            <button
+              onClick={copyPayrollText}
+              disabled={copying || payrollRows.length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-orange-200 bg-white px-5 py-2.5 text-sm font-bold text-orange-600 hover:bg-orange-50 disabled:opacity-60"
+            >
+              <Copy size={16} />
+              複製表
+            </button>
           </div>
         </section>
 
         <section className="rounded-[28px] border border-orange-100 bg-white shadow-sm shadow-orange-100">
-          <div className="border-b border-orange-100 px-5 py-4">
-            <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
-              <Banknote size={20} className="text-orange-500" />
-              待發薪清單
-            </h2>
+          <div className="flex flex-col gap-4 border-b border-orange-100 px-5 py-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
+                <Banknote size={20} className="text-orange-500" />
+                發薪預覽
+              </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              只顯示指定區間內應發金額大於 0 的員工。
-            </p>
+              <p className="mt-1 text-sm text-slate-500">
+                只顯示目前還沒有標記已發薪、且金額不為 0 的員工。
+              </p>
+            </div>
+
+            <button
+              onClick={markCurrentPayrollPaid}
+              disabled={markingPaid || payrollRows.length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-emerald-100 hover:bg-emerald-600 disabled:opacity-60"
+            >
+              <CheckCircle2 size={16} />
+              {markingPaid ? "處理中..." : "將目前預覽標記已發薪"}
+            </button>
           </div>
 
           {loading ? (
             <div className="px-5 py-12 text-center text-sm font-semibold text-slate-400">
               讀取中...
             </div>
-          ) : rows.length === 0 ? (
+          ) : payrollRows.length === 0 ? (
             <div className="px-5 py-12 text-center text-sm font-semibold text-slate-400">
-              目前沒有需要發薪的員工
+              目前沒有需要發薪的人員
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table>
                 <thead>
                   <tr>
-                    <th>名字</th>
+                    <th>員工</th>
                     <th>銀行</th>
                     <th>帳號</th>
-                    <th>戶名</th>
-                    <th>薪水</th>
-                    <th>獎金 / 扣除</th>
-                    <th>應發</th>
-                    <th>筆數</th>
+                    <th>訂單</th>
+                    <th>訂單薪水</th>
+                    <th>訂單獎金</th>
+                    <th>額外獎金 / 扣除</th>
+                    <th>應發合計</th>
                   </tr>
                 </thead>
+
                 <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.discordId}>
+                  {payrollRows.map((row) => (
+                    <tr key={row.staff.id}>
                       <td>
-                        <div className="font-black text-slate-900">
-                          {row.staffName}
-                        </div>
-                        <div className="text-xs font-semibold text-slate-400">
-                          {row.discordId}
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-orange-100 text-orange-600">
+                            {row.staff.avatar_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={row.staff.avatar_url}
+                                alt="avatar"
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <UserRound size={20} />
+                            )}
+                          </div>
+
+                          <div>
+                            <p className="font-black text-slate-900">
+                              {getDisplayName(row.staff)}
+                            </p>
+                            <p className="text-xs font-semibold text-slate-400">
+                              {row.staff.discord_id}
+                            </p>
+                          </div>
                         </div>
                       </td>
-                      <td>{row.bankName || "-"}</td>
-                      <td>{row.bankAccount || "-"}</td>
-                      <td>{row.accountName}</td>
-                      <td>{money(row.salary)}</td>
+
+                      <td>{row.staff.bank_name || "未填寫"}</td>
+                      <td>{row.staff.bank_account || "未填寫"}</td>
+                      <td>
+                        {row.orders.length} 筆
+                        {row.bonuses.length > 0 ? ` / 獎金 ${row.bonuses.length} 筆` : ""}
+                      </td>
+                      <td className="font-bold text-slate-700">
+                        {money(row.orderSalary)}
+                      </td>
                       <td
-                        className={
-                          row.bonus < 0 ? "text-rose-500" : "text-emerald-600"
-                        }
+                        className={`font-bold ${
+                          row.orderBonus < 0 ? "text-red-500" : "text-orange-600"
+                        }`}
                       >
-                        {money(row.bonus)}
+                        {money(row.orderBonus)}
                       </td>
-                      <td className="font-black text-orange-600">
-                        {money(row.total)}
+                      <td
+                        className={`font-bold ${
+                          row.extraBonus < 0 ? "text-red-500" : "text-orange-600"
+                        }`}
+                      >
+                        {money(row.extraBonus)}
                       </td>
-                      <td>
-                        {row.orderCount} 單 / {row.bonusCount} 筆
+                      <td className="text-lg font-black text-orange-600">
+                        {money(row.totalPay)}
                       </td>
                     </tr>
                   ))}
@@ -556,6 +708,89 @@ export default function AdminPayrollPage() {
               </table>
             </div>
           )}
+        </section>
+
+        <section className="grid gap-5 xl:grid-cols-2">
+          <DetailCard title="未發薪訂單明細">
+            {orders.length === 0 ? (
+              <p className="py-8 text-center text-sm font-semibold text-slate-400">
+                沒有未發薪訂單
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {orders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="rounded-2xl border border-orange-100 bg-orange-50/40 p-4"
+                  >
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-sm font-black text-slate-800">
+                          {order.staff_name || order.assigned_player || order.discord_id}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {order.order_no || order.order_id || "無訂單編號"}｜{formatDateTime(getOrderDate(order))}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {order.customer_name || "未填客人"}｜{order.service_name || "未填項目"}
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-xs font-bold text-slate-400">
+                          訂單 {money(getOrderAmount(order))}
+                        </p>
+                        <p className="text-sm font-black text-orange-600">
+                          薪資 {money(order.staff_salary)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </DetailCard>
+
+          <DetailCard title="未發薪獎金 / 扣除明細">
+            {bonuses.length === 0 ? (
+              <p className="py-8 text-center text-sm font-semibold text-slate-400">
+                沒有未發薪獎金 / 扣除
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {bonuses.map((bonus) => (
+                  <div
+                    key={bonus.id}
+                    className="rounded-2xl border border-orange-100 bg-orange-50/40 p-4"
+                  >
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-sm font-black text-slate-800">
+                          {bonus.staff_name || bonus.discord_id}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {bonus.bonus_type || "獎金"}｜{formatDateTime(bonus.created_at)}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {bonus.description || "-"}
+                        </p>
+                      </div>
+
+                      <p
+                        className={`text-sm font-black ${
+                          Number(bonus.amount || 0) < 0
+                            ? "text-red-500"
+                            : "text-orange-600"
+                        }`}
+                      >
+                        {money(bonus.amount)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </DetailCard>
         </section>
       </div>
     </main>
@@ -571,19 +806,21 @@ function StatCard({ title, value }: { title: string; value: string }) {
   );
 }
 
-function Field({
-  label,
+function DetailCard({
+  title,
   children,
 }: {
-  label: string;
+  title: string;
   children: ReactNode;
 }) {
   return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-bold text-slate-600">
-        {label}
-      </span>
+    <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+      <h2 className="mb-4 flex items-center gap-2 text-lg font-black text-slate-900">
+        <WalletCards size={20} className="text-orange-500" />
+        {title}
+      </h2>
+
       {children}
-    </label>
+    </div>
   );
 }

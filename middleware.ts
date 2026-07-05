@@ -65,6 +65,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
+  if (pathname === "/admin/payroll") {
+    url.pathname = "/xy/admin/payroll";
+    return NextResponse.rewrite(url);
+  }
+
   return NextResponse.next();
 }
 

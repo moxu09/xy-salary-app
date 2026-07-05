@@ -1,31 +1,22 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 import {
   ArrowLeft,
-  BadgeDollarSign,
-  CalendarDays,
-  CheckCircle2,
   Edit3,
   Gift,
   Loader2,
-  MinusCircle,
   Plus,
   RefreshCw,
   Save,
   Search,
+  Sparkles,
   Trash2,
   WalletCards,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
-
-const XY_GUILD_ID =
-  process.env.NEXT_PUBLIC_XY_GUILD_ID ||
-  process.env.NEXT_PUBLIC_GUILD_ID ||
-  "1501098191813214312";
-const XY_PLAY_ORDER_FILTER =
-  `guild_id.eq.${XY_GUILD_ID},guild_id.is.null`;
 
 type Staff = {
   id: string;
@@ -33,19 +24,20 @@ type Staff = {
   discord_name?: string | null;
   display_name?: string | null;
   real_name?: string | null;
+  birthday?: string | null;
+  birthday_month?: number | null;
   is_active?: boolean | null;
-  commission_tier?: string | null;
-  commission_note?: string | null;
 };
 
 type SalaryOrder = {
   id: string;
-  order_no?: string | null;
   order_id?: string | null;
-  discord_id: string;
+  order_no?: string | null;
+  discord_id?: string | null;
   staff_name?: string | null;
-  customer_name?: string | null;
+  assigned_player?: string | null;
   customer_id?: string | null;
+  customer_name?: string | null;
   service_name?: string | null;
   service?: string | null;
   order_amount?: number | null;
@@ -59,8 +51,9 @@ type SalaryOrder = {
   status?: string | null;
   order_finished_at?: string | null;
   completed_at?: string | null;
-  created_at?: string | null;
   is_deleted?: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 type Bonus = {
@@ -71,78 +64,99 @@ type Bonus = {
   description?: string | null;
   amount?: number | null;
   created_at?: string | null;
+  updated_at?: string | null;
 };
 
 type OrderForm = {
+  id: string;
   discord_id: string;
+  staff_name: string;
+  customer_name: string;
   service_name: string;
   order_amount: string;
   salary_rate: string;
+  staff_salary: string;
   bonus_amount: string;
-  order_finished_at: string;
   status: string;
+  order_finished_at: string;
 };
 
 type BonusForm = {
   discord_id: string;
+  staff_name: string;
   bonus_type: string;
   description: string;
   amount: string;
-  created_at: string;
 };
 
-type DeductionForm = {
-  discord_id: string;
-  amount: string;
-  description: string;
-  created_at: string;
-};
-
-type PayForm = {
-  discord_id: string;
-  start_date: string;
-  end_date: string;
-};
-
-function getTodayInput() {
+function getCurrentMonthInput() {
   const now = new Date();
-  const offset = now.getTimezoneOffset();
-  const local = new Date(now.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 10);
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function getNowInput() {
+function getMonthRange(monthText: string) {
+  const [yearText, monthValueText] = monthText.split("-");
+  const year = Number(yearText);
+  const monthValue = Number(monthValueText);
+
+  const source =
+    Number.isInteger(year) && Number.isInteger(monthValue) && monthValue >= 1
+      ? new Date(year, monthValue - 1, 1)
+      : new Date();
+
+  const start = new Date(source.getFullYear(), source.getMonth(), 1, 0, 0, 0);
+  const end = new Date(
+    source.getFullYear(),
+    source.getMonth() + 1,
+    0,
+    23,
+    59,
+    59
+  );
+
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+  };
+}
+
+function getTodayDatetimeInput() {
   const now = new Date();
-  const offset = now.getTimezoneOffset();
-  const local = new Date(now.getTime() - offset * 60 * 1000);
+  const offsetMs = now.getTimezoneOffset() * 60 * 1000;
+  const local = new Date(now.getTime() - offsetMs);
   return local.toISOString().slice(0, 16);
 }
 
-function getMonthStartInput() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const offset = start.getTimezoneOffset();
-  const local = new Date(start.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 10);
+function toDatetimeInput(value?: string | null) {
+  if (!value) return getTodayDatetimeInput();
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return getTodayDatetimeInput();
+
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  const local = new Date(date.getTime() - offsetMs);
+
+  return local.toISOString().slice(0, 16);
 }
 
-function dateToStartIso(value: string) {
-  if (!value) return null;
-  return new Date(`${value}T00:00:00`).toISOString();
-}
-
-function dateToEndIso(value: string) {
-  if (!value) return null;
-  return new Date(`${value}T23:59:59`).toISOString();
-}
-
-function datetimeToIso(value: string) {
+function datetimeInputToIso(value: string) {
   if (!value) return new Date().toISOString();
-  return new Date(value).toISOString();
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return new Date().toISOString();
+
+  return date.toISOString();
 }
 
 function money(value: number | string | null | undefined) {
   return `$${Number(value || 0).toLocaleString("zh-TW")}`;
+}
+
+function numberValue(value: string | number | null | undefined) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function formatDateTime(value?: string | null) {
@@ -162,174 +176,6 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-function getDisplayStaffName(staff?: Staff | null) {
-  if (!staff) return "未知員工";
-
-  return (
-    staff.display_name ||
-    staff.real_name ||
-    staff.discord_name ||
-    staff.discord_id ||
-    "未知員工"
-  );
-}
-
-function getStaffNameByDiscordId(staffList: Staff[], discordId: string) {
-  const staff = staffList.find((item) => item.discord_id === discordId);
-  return getDisplayStaffName(staff);
-}
-
-function getManualCommissionRate(tier?: string | null) {
-  if (tier === "rate_80") return 80;
-  if (tier === "rate_85") return 85;
-  if (tier === "rate_90") return 90;
-  if (tier === "manager_95") return 95;
-  return null;
-}
-
-function getTaipeiMonthText(date = new Date()) {
-  const taipeiDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-  return taipeiDate.toISOString().slice(0, 7);
-}
-
-function getNextMonthTextFromIso(isoText?: string | null) {
-  if (!isoText) return "";
-
-  const date = new Date(isoText);
-  const taipeiDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-
-  const year = taipeiDate.getUTCFullYear();
-  const month = taipeiDate.getUTCMonth();
-
-  const next = new Date(Date.UTC(year, month + 1, 1));
-  return next.toISOString().slice(0, 7);
-}
-
-function getOrderSourceDate(order: SalaryOrder) {
-  return order.order_finished_at || order.completed_at || order.created_at || null;
-}
-
-function getStaffTotalOrderAmountBeforeDate(
-  orderList: SalaryOrder[],
-  discordId: string,
-  beforeIso: string
-) {
-  const beforeDate = new Date(beforeIso);
-
-  return orderList
-    .filter((order) => order.discord_id === discordId)
-    .filter((order) => {
-      const sourceDate = getOrderSourceDate(order);
-      if (!sourceDate) return false;
-      return new Date(sourceDate) < beforeDate;
-    })
-    .reduce((sum, order) => sum + getOrderAmount(order), 0);
-}
-
-function getStaffYearSalaryTotal(
-  orderList: SalaryOrder[],
-  discordId: string,
-  year: number
-) {
-  return orderList
-    .filter((order) => order.discord_id === discordId)
-    .filter((order) => {
-      const sourceDate = getOrderSourceDate(order);
-      if (!sourceDate) return false;
-      return new Date(sourceDate).getFullYear() === year;
-    })
-    .reduce((sum, order) => sum + Number(order.staff_salary || 0), 0);
-}
-
-function getFirstReachAmountDate(
-  orderList: SalaryOrder[],
-  discordId: string,
-  targetAmount: number
-) {
-  const sortedOrders = orderList
-    .filter((order) => order.discord_id === discordId)
-    .filter((order) => order.is_deleted !== true)
-    .sort((a, b) => {
-      const aDate = getOrderSourceDate(a);
-      const bDate = getOrderSourceDate(b);
-
-      return new Date(aDate || 0).getTime() - new Date(bDate || 0).getTime();
-    });
-
-  let total = 0;
-
-  for (const order of sortedOrders) {
-    total += getOrderAmount(order);
-
-    if (total >= targetAmount) {
-      return getOrderSourceDate(order);
-    }
-  }
-
-  return null;
-}
-
-function getStaffRate(
-  staff: Staff | null | undefined,
-  finishedAtInput?: string,
-  orderList: SalaryOrder[] = []
-) {
-  const finishedAt = datetimeToIso(finishedAtInput || getNowInput());
-  const finishedDate = new Date(finishedAt);
-  const openingEnd = new Date("2026-09-01T00:00:00+08:00");
-  const manualRate = getManualCommissionRate(staff?.commission_tier);
-
-  if (manualRate) {
-    return manualRate;
-  }
-
-  if (finishedDate < openingEnd) {
-    return 90;
-  }
-
-  const discordId = staff?.discord_id;
-
-  if (!discordId) {
-    return 80;
-  }
-
-  const previousYear = finishedDate.getFullYear() - 1;
-  const previousYearSalary = getStaffYearSalaryTotal(
-    orderList,
-    discordId,
-    previousYear
-  );
-
-  if (previousYearSalary >= 100000) {
-    return 90;
-  }
-
-  const firstReach10kDate = getFirstReachAmountDate(orderList, discordId, 10000);
-
-  if (firstReach10kDate) {
-    const reachNextMonth = getNextMonthTextFromIso(firstReach10kDate);
-    const orderMonth = getTaipeiMonthText(finishedDate);
-
-    if (orderMonth >= reachNextMonth) {
-      return 85;
-    }
-  }
-
-  return 80;
-}
-
-function getOrderAmount(order: SalaryOrder) {
-  return Number(order.order_amount ?? order.price ?? 0);
-}
-
-function getOrderService(order: SalaryOrder) {
-  return order.service_name || order.service || "-";
-}
-
-function getOrderCustomer(order: SalaryOrder) {
-  return order.customer_name || order.customer_id || "-";
-}
-
 function getDiscordIdFromSession(session: any) {
   const user = session?.user;
   const metadata = user?.user_metadata || {};
@@ -344,64 +190,136 @@ function getDiscordIdFromSession(session: any) {
   ).trim();
 }
 
-export default function AdminSalaryPage() {
+function getDisplayName(staff: Staff | null | undefined) {
+  if (!staff) return "未選擇員工";
+
+  return (
+    staff.display_name ||
+    staff.real_name ||
+    staff.discord_name ||
+    staff.discord_id ||
+    "未知員工"
+  );
+}
+
+function getOrderStaffName(order: SalaryOrder) {
+  return order.staff_name || order.assigned_player || order.discord_id || "-";
+}
+
+function getOrderCustomer(order: SalaryOrder) {
+  return order.customer_name || order.customer_id || "-";
+}
+
+function getOrderService(order: SalaryOrder) {
+  return order.service_name || order.service || "-";
+}
+
+function getOrderAmount(order: SalaryOrder) {
+  return Number(order.order_amount ?? order.price ?? 0);
+}
+
+function getOrderSourceDate(order: SalaryOrder) {
+  return order.order_finished_at || order.completed_at || order.created_at || null;
+}
+
+function getBirthdayMonth(staff: Staff) {
+  if (
+    staff.birthday_month &&
+    staff.birthday_month >= 1 &&
+    staff.birthday_month <= 12
+  ) {
+    return staff.birthday_month;
+  }
+
+  if (!staff.birthday) return null;
+
+  const date = new Date(staff.birthday);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.getMonth() + 1;
+}
+
+function makeEmptyOrderForm(): OrderForm {
+  return {
+    id: "",
+    discord_id: "",
+    staff_name: "",
+    customer_name: "",
+    service_name: "陪玩薪資",
+    order_amount: "",
+    salary_rate: "75",
+    staff_salary: "",
+    bonus_amount: "0",
+    status: "未發薪",
+    order_finished_at: getTodayDatetimeInput(),
+  };
+}
+
+function makeEmptyBonusForm(): BonusForm {
+  return {
+    discord_id: "",
+    staff_name: "",
+    bonus_type: "獎金",
+    description: "",
+    amount: "",
+  };
+}
+
+function makeOrderNo() {
+  const now = new Date();
+  const timestamp = now
+    .toISOString()
+    .replace(/[-:.TZ]/g, "")
+    .slice(0, 14);
+
+  const random = Math.floor(Math.random() * 900 + 100);
+
+  return `XY-${timestamp}-${random}`;
+}
+
+function getSelectedMonthNumber(monthText: string) {
+  const month = Number(monthText.split("-")[1] || 0);
+  return month >= 1 && month <= 12 ? month : new Date().getMonth() + 1;
+}
+
+export default function XYAdminSalaryPage() {
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(true);
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [orders, setOrders] = useState<SalaryOrder[]>([]);
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthInput());
   const [keyword, setKeyword] = useState("");
-  const [filterStaffId, setFilterStaffId] = useState("all");
-  const [startDate, setStartDate] = useState(getMonthStartInput());
-  const [endDate, setEndDate] = useState(getTodayInput());
+  const [staffFilter, setStaffFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [orderForm, setOrderForm] = useState<OrderForm>(makeEmptyOrderForm());
+  const [bonusForm, setBonusForm] = useState<BonusForm>(makeEmptyBonusForm());
   const [savingOrder, setSavingOrder] = useState(false);
   const [savingBonus, setSavingBonus] = useState(false);
-  const [savingDeduction, setSavingDeduction] = useState(false);
-  const [paying, setPaying] = useState(false);
-  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-
-  const [orderForm, setOrderForm] = useState<OrderForm>({
-    discord_id: "",
-    service_name: "",
-    order_amount: "",
-    salary_rate: "90",
-    bonus_amount: "0",
-    order_finished_at: getNowInput(),
-    status: "未發薪",
-  });
-
-  const [bonusForm, setBonusForm] = useState<BonusForm>({
-    discord_id: "",
-    bonus_type: "",
-    description: "",
-    amount: "",
-    created_at: getNowInput(),
-  });
-
-  const [deductionForm, setDeductionForm] = useState<DeductionForm>({
-    discord_id: "",
-    amount: "",
-    description: "",
-    created_at: getNowInput(),
-  });
-
-  const [payForm, setPayForm] = useState<PayForm>({
-    discord_id: "all",
-    start_date: getMonthStartInput(),
-    end_date: getTodayInput(),
-  });
+  const [markingPaid, setMarkingPaid] = useState(false);
+  const [generatingBenefits, setGeneratingBenefits] = useState(false);
 
   const filteredOrders = useMemo(() => {
     const key = keyword.trim().toLowerCase();
 
-    if (!key) return orders;
-
     return orders.filter((order) => {
+      if (staffFilter !== "all" && order.discord_id !== staffFilter) {
+        return false;
+      }
+
+      if (statusFilter !== "all" && (order.status || "未發薪") !== statusFilter) {
+        return false;
+      }
+
+      if (!key) return true;
+
       const text = [
         order.order_no,
         order.order_id,
         order.discord_id,
         order.staff_name,
+        order.assigned_player,
         order.customer_name,
         order.customer_id,
         order.service_name,
@@ -414,54 +332,43 @@ export default function AdminSalaryPage() {
 
       return text.includes(key);
     });
-  }, [orders, keyword]);
+  }, [orders, keyword, staffFilter, statusFilter]);
 
   const filteredBonuses = useMemo(() => {
-    const key = keyword.trim().toLowerCase();
-
-    if (!key) return bonuses;
-
-    return bonuses.filter((bonus) => {
-      const text = [
-        bonus.discord_id,
-        bonus.staff_name,
-        bonus.bonus_type,
-        bonus.description,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return text.includes(key);
-    });
-  }, [bonuses, keyword]);
+    if (staffFilter === "all") return bonuses;
+    return bonuses.filter((bonus) => bonus.discord_id === staffFilter);
+  }, [bonuses, staffFilter]);
 
   const totalIncome = useMemo(() => {
-    return orders.reduce((sum, order) => sum + getOrderAmount(order), 0);
-  }, [orders]);
+    return filteredOrders.reduce(
+      (sum, order) => sum + Number(order.order_amount || order.price || 0),
+      0
+    );
+  }, [filteredOrders]);
 
   const totalSalary = useMemo(() => {
-    return orders.reduce((sum, order) => sum + Number(order.staff_salary || 0), 0);
-  }, [orders]);
+    return filteredOrders.reduce(
+      (sum, order) => sum + Number(order.staff_salary || 0),
+      0
+    );
+  }, [filteredOrders]);
 
-  const totalBonus = useMemo(() => {
-    const orderBonus = orders.reduce(
+  const totalOrderBonus = useMemo(() => {
+    return filteredOrders.reduce(
       (sum, order) => sum + Number(order.bonus_amount || 0),
       0
     );
+  }, [filteredOrders]);
 
-    const extraBonus = bonuses.reduce(
+  const totalBonus = useMemo(() => {
+    return filteredBonuses.reduce(
       (sum, bonus) => sum + Number(bonus.amount || 0),
       0
     );
+  }, [filteredBonuses]);
 
-    return orderBonus + extraBonus;
-  }, [orders, bonuses]);
-
-  const totalExpense = totalSalary + totalBonus;
-
-  const unpaidTotal = useMemo(() => {
-    const orderUnpaid = orders
+  const unpaidAmount = useMemo(() => {
+    const unpaidOrders = filteredOrders
       .filter((order) => order.status !== "已發薪")
       .reduce(
         (sum, order) =>
@@ -471,16 +378,14 @@ export default function AdminSalaryPage() {
         0
       );
 
-    const bonusTotal = bonuses.reduce(
-      (sum, bonus) => sum + Number(bonus.amount || 0),
-      0
-    );
+    return unpaidOrders + totalBonus;
+  }, [filteredOrders, totalBonus]);
 
-    return orderUnpaid + bonusTotal;
-  }, [orders, bonuses]);
+  const platformIncome = totalIncome - totalSalary - totalOrderBonus - totalBonus;
 
   useEffect(() => {
     boot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function boot() {
@@ -491,7 +396,7 @@ export default function AdminSalaryPage() {
       const session = data.session;
 
       if (!session) {
-        window.location.href = "/admin-login";
+        window.location.href = "/xy/admin-login";
         return;
       }
 
@@ -500,35 +405,35 @@ export default function AdminSalaryPage() {
       if (!discordId) {
         alert("無法取得 Discord ID，請重新登入。");
         await supabase.auth.signOut();
-        window.location.href = "/admin-login";
+        window.location.href = "/xy/admin-login";
         return;
       }
 
       const { data: admin, error } = await supabase
-        .from("admins")
+        .from("xy_admins")
         .select("*")
         .eq("discord_id", discordId)
         .eq("is_active", true)
         .maybeSingle();
 
       if (error) {
-        console.error("check admin error:", error);
-        alert("檢查後台權限失敗");
-        window.location.href = "/staff";
+        console.error("check xy admin error:", error);
+        alert("檢查 XY 後台權限失敗");
+        window.location.href = "/xy/staff";
         return;
       }
 
       if (!admin) {
-        alert("你沒有後台管理權限");
-        window.location.href = "/staff";
+        alert("你沒有 XY 後台管理權限");
+        window.location.href = "/xy/staff";
         return;
       }
 
       await loadAll();
     } catch (error) {
-      console.error("admin salary boot error:", error);
-      alert("檢查後台權限失敗");
-      window.location.href = "/staff";
+      console.error("xy salary boot error:", error);
+      alert("檢查 XY 後台權限失敗");
+      window.location.href = "/xy/staff";
     } finally {
       setChecking(false);
     }
@@ -537,85 +442,106 @@ export default function AdminSalaryPage() {
   async function loadAll() {
     setLoading(true);
 
-    await Promise.all([loadStaff(), loadSalaryData()]);
+    const { startIso, endIso } = getMonthRange(selectedMonth);
+
+    const [staffRes, orderRes, bonusRes] = await Promise.all([
+      supabase
+        .from("xy_players")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("xy_play_orders")
+        .select("*")
+        .or("is_deleted.eq.false,is_deleted.is.null")
+        .gte("order_finished_at", startIso)
+        .lte("order_finished_at", endIso)
+        .order("order_finished_at", { ascending: false }),
+      supabase
+        .from("xy_players_bonus")
+        .select("*")
+        .gte("created_at", startIso)
+        .lte("created_at", endIso)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (staffRes.error) {
+      console.error("load xy staff error:", staffRes.error);
+      setStaffList([]);
+    } else {
+      const list = (staffRes.data || []) as Staff[];
+      setStaffList(list);
+
+      if (!orderForm.discord_id && list.length > 0) {
+        const firstStaff = list[0];
+
+        setOrderForm((prev) => ({
+          ...prev,
+          discord_id: firstStaff.discord_id,
+          staff_name: getDisplayName(firstStaff),
+        }));
+
+        setBonusForm((prev) => ({
+          ...prev,
+          discord_id: firstStaff.discord_id,
+          staff_name: getDisplayName(firstStaff),
+        }));
+      }
+    }
+
+    if (orderRes.error) {
+      console.error("load xy orders error:", orderRes.error);
+      setOrders([]);
+    } else {
+      setOrders((orderRes.data || []) as SalaryOrder[]);
+    }
+
+    if (bonusRes.error) {
+      console.error("load xy bonuses error:", bonusRes.error);
+      setBonuses([]);
+    } else {
+      setBonuses((bonusRes.data || []) as Bonus[]);
+    }
 
     setLoading(false);
   }
 
-  async function loadStaff() {
-    const { data, error } = await supabase
-      .from("players")
-      .select(
-        "id, discord_id, discord_name, display_name, real_name, is_active, commission_tier, commission_note"
-      )
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("load staff error:", error);
-      alert("讀取員工資料失敗");
-      return;
-    }
-
-    setStaffList((data || []) as Staff[]);
+  function getStaffMonthOrderAmount(discordId: string, excludeOrderId?: string) {
+    return orders
+      .filter((order) => {
+        if (order.discord_id !== discordId) return false;
+        if (excludeOrderId && order.id === excludeOrderId) return false;
+        return true;
+      })
+      .reduce((sum, order) => sum + getOrderAmount(order), 0);
   }
 
-  async function loadSalaryData() {
-    const startIso = dateToStartIso(startDate);
-    const endIso = dateToEndIso(endDate);
+  function calculateRuleRate(
+    discordId: string,
+    orderAmount: number,
+    excludeOrderId?: string
+  ) {
+    const previousMonthAmount = getStaffMonthOrderAmount(discordId, excludeOrderId);
+    const monthAmountWithCurrentOrder = previousMonthAmount + orderAmount;
 
-    let orderQuery = supabase
-      .from("play_orders")
-      .select("*")
-      .or(XY_PLAY_ORDER_FILTER)
-      .or("is_deleted.eq.false,is_deleted.is.null")
-      .order("order_finished_at", { ascending: false });
+    let rate = monthAmountWithCurrentOrder >= 7000 ? 80 : 75;
 
-    if (startIso) {
-      orderQuery = orderQuery.gte("order_finished_at", startIso);
+    if (orderAmount > 4999) {
+      rate = rate >= 80 ? 82 : 80;
     }
 
-    if (endIso) {
-      orderQuery = orderQuery.lte("order_finished_at", endIso);
-    }
+    return rate;
+  }
 
-    if (filterStaffId !== "all") {
-      orderQuery = orderQuery.eq("discord_id", filterStaffId);
-    }
+  function calculateRuleSalary(
+    discordId: string,
+    orderAmountText: string,
+    excludeOrderId?: string
+  ) {
+    const orderAmount = numberValue(orderAmountText);
+    const rate = calculateRuleRate(discordId, orderAmount, excludeOrderId);
+    const salary = Math.round(orderAmount * (rate / 100));
 
-    const { data: orderData, error: orderError } = await orderQuery;
-
-    if (orderError) {
-      console.error("load salary orders error:", orderError);
-      setOrders([]);
-    } else {
-      setOrders((orderData || []) as SalaryOrder[]);
-    }
-
-    let bonusQuery = supabase
-      .from("players_bonus")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (startIso) {
-      bonusQuery = bonusQuery.gte("created_at", startIso);
-    }
-
-    if (endIso) {
-      bonusQuery = bonusQuery.lte("created_at", endIso);
-    }
-
-    if (filterStaffId !== "all") {
-      bonusQuery = bonusQuery.eq("discord_id", filterStaffId);
-    }
-
-    const { data: bonusData, error: bonusError } = await bonusQuery;
-
-    if (bonusError) {
-      console.error("load bonus error:", bonusError);
-      setBonuses([]);
-    } else {
-      setBonuses((bonusData || []) as Bonus[]);
-    }
+    return { rate, salary };
   }
 
   function updateOrderForm<K extends keyof OrderForm>(
@@ -638,48 +564,99 @@ export default function AdminSalaryPage() {
     }));
   }
 
-  function updateDeductionForm<K extends keyof DeductionForm>(
-    key: K,
-    value: DeductionForm[K]
-  ) {
-    setDeductionForm((prev) => ({
+  function handleOrderStaffChange(discordId: string) {
+    const staff = staffList.find((item) => item.discord_id === discordId);
+    const result = calculateRuleSalary(discordId, orderForm.order_amount, orderForm.id);
+
+    setOrderForm((prev) => ({
       ...prev,
-      [key]: value,
+      discord_id: discordId,
+      staff_name: getDisplayName(staff),
+      salary_rate: String(result.rate),
+      staff_salary: prev.order_amount ? String(result.salary) : "",
     }));
   }
 
-  function resetOrderForm() {
-    setEditingOrderId(null);
-    setOrderForm({
-      discord_id: "",
-      service_name: "",
-      order_amount: "",
-      salary_rate: "90",
-      bonus_amount: "0",
-      order_finished_at: getNowInput(),
-      status: "未發薪",
-    });
+  function handleOrderAmountChange(value: string) {
+    const result = calculateRuleSalary(orderForm.discord_id, value, orderForm.id);
+
+    setOrderForm((prev) => ({
+      ...prev,
+      order_amount: value,
+      salary_rate: String(result.rate),
+      staff_salary: value ? String(result.salary) : "",
+    }));
+  }
+
+  function handleBonusStaffChange(discordId: string) {
+    const staff = staffList.find((item) => item.discord_id === discordId);
+
+    setBonusForm((prev) => ({
+      ...prev,
+      discord_id: discordId,
+      staff_name: getDisplayName(staff),
+    }));
+  }
+
+  function autoCalculateSalary() {
+    if (!orderForm.discord_id) {
+      alert("請先選擇員工");
+      return;
+    }
+
+    if (!orderForm.order_amount) {
+      alert("請先輸入訂單金額");
+      return;
+    }
+
+    const result = calculateRuleSalary(
+      orderForm.discord_id,
+      orderForm.order_amount,
+      orderForm.id
+    );
+
+    setOrderForm((prev) => ({
+      ...prev,
+      salary_rate: String(result.rate),
+      staff_salary: String(result.salary),
+    }));
   }
 
   function editOrder(order: SalaryOrder) {
-    setEditingOrderId(order.id);
     setOrderForm({
+      id: order.id,
       discord_id: order.discord_id || "",
-      service_name: getOrderService(order) === "-" ? "" : getOrderService(order),
-      order_amount: String(getOrderAmount(order) || ""),
-      salary_rate: String(
-        getStaffRate(staffList.find((item) => item.discord_id === order.discord_id))
-      ),
-      bonus_amount: String(order.bonus_amount || 0),
-      order_finished_at: order.order_finished_at
-        ? new Date(order.order_finished_at).toISOString().slice(0, 16)
-        : getNowInput(),
+      staff_name: order.staff_name || order.assigned_player || "",
+      customer_name: order.customer_name || "",
+      service_name: order.service_name || order.service || "",
+      order_amount: String(order.order_amount ?? order.price ?? ""),
+      salary_rate: String(order.salary_rate ?? ""),
+      staff_salary: String(order.staff_salary ?? ""),
+      bonus_amount: String(order.bonus_amount ?? 0),
       status: order.status || "未發薪",
+      order_finished_at: toDatetimeInput(getOrderSourceDate(order)),
     });
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function resetOrderForm() {
+    const firstStaff = staffList[0];
+
+    setOrderForm({
+      ...makeEmptyOrderForm(),
+      discord_id: firstStaff?.discord_id || "",
+      staff_name: firstStaff ? getDisplayName(firstStaff) : "",
+    });
+  }
+
+  function resetBonusForm() {
+    const firstStaff = staffList[0];
+
+    setBonusForm({
+      ...makeEmptyBonusForm(),
+      discord_id: firstStaff?.discord_id || "",
+      staff_name: firstStaff ? getDisplayName(firstStaff) : "",
     });
   }
 
@@ -689,121 +666,125 @@ export default function AdminSalaryPage() {
       return;
     }
 
-    const orderAmount = Number(orderForm.order_amount || 0);
-    const bonusAmount = Number(orderForm.bonus_amount || 0);
-
-    if (orderAmount <= 0 || Number.isNaN(orderAmount)) {
-      alert("請輸入正確訂單金額");
+    if (!orderForm.customer_name.trim()) {
+      alert("請輸入客人名稱");
       return;
     }
 
-    if (Number.isNaN(bonusAmount)) {
-      alert("請輸入正確訂單獎金");
+    if (!orderForm.service_name.trim()) {
+      alert("請輸入項目名稱");
       return;
     }
 
-    const selectedStaff = staffList.find(
-      (item) => item.discord_id === orderForm.discord_id
+    const orderAmount = numberValue(orderForm.order_amount);
+
+    if (orderAmount <= 0) {
+      alert("請輸入有效的訂單金額");
+      return;
+    }
+
+    const ruleResult = calculateRuleSalary(
+      orderForm.discord_id,
+      orderForm.order_amount,
+      orderForm.id
     );
 
-    const salaryRate = getStaffRate(
-      selectedStaff,
-      orderForm.order_finished_at,
-      orders
-    );
-
-    const staffName = getStaffNameByDiscordId(staffList, orderForm.discord_id);
-    const staffSalary = Math.round(orderAmount * (salaryRate / 100));
-    const finishedAt = datetimeToIso(orderForm.order_finished_at);
-    const manualOrderNo = `MANUAL-${Date.now()}`;
+    const salaryRate = ruleResult.rate;
+    const staffSalary = ruleResult.salary;
+    const bonusAmount = numberValue(orderForm.bonus_amount);
+    const calculatedPlatformIncome = orderAmount - staffSalary - bonusAmount;
 
     setSavingOrder(true);
 
-    if (editingOrderId) {
+    const payload = {
+      discord_id: orderForm.discord_id,
+      staff_name: orderForm.staff_name,
+      assigned_player: orderForm.staff_name,
+      customer_name: orderForm.customer_name.trim(),
+      service_name: orderForm.service_name.trim(),
+      service: orderForm.service_name.trim(),
+      order_amount: orderAmount,
+      price: orderAmount,
+      salary_rate: salaryRate,
+      staff_salary: staffSalary,
+      bonus_amount: bonusAmount,
+      salary_level: `${salaryRate}%`,
+      platform_income: calculatedPlatformIncome,
+      platform_expense: staffSalary + bonusAmount,
+      status: orderForm.status || "未發薪",
+      order_finished_at: datetimeInputToIso(orderForm.order_finished_at),
+      completed_at: datetimeInputToIso(orderForm.order_finished_at),
+      is_deleted: false,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (orderForm.id) {
       const { error } = await supabase
-        .from("play_orders")
-        .update({
-          discord_id: orderForm.discord_id,
-          staff_name: staffName,
-          assigned_player: orderForm.discord_id,
-          service_name: orderForm.service_name || null,
-          service: orderForm.service_name || null,
-          order_amount: orderAmount,
-          price: orderAmount,
-          completed_at: finishedAt,
-          staff_salary: staffSalary,
-          bonus_amount: bonusAmount,
-          salary_rate: salaryRate,
-          salary_level: `${salaryRate}%`,
-          platform_income: orderAmount,
-          platform_expense: staffSalary + bonusAmount,
-          status: orderForm.status || "未發薪",
-          order_finished_at: finishedAt,
-        })
-        .eq("id", editingOrderId)
-        .or(XY_PLAY_ORDER_FILTER);
+        .from("xy_play_orders")
+        .update(payload)
+        .eq("id", orderForm.id);
 
       setSavingOrder(false);
 
       if (error) {
-        console.error("update order error:", error);
-        alert(
-          "更新訂單失敗：\n" +
-            (error.message || "未知錯誤") +
-            "\n\n請把這段錯誤貼給我。"
-        );
+        console.error("update xy order error:", error);
+        alert(`更新 XY 訂單失敗：${error.message}`);
         return;
       }
 
-      alert("訂單已更新");
+      alert("XY 訂單已更新");
       resetOrderForm();
-      await loadSalaryData();
+      await loadAll();
       return;
     }
 
-   const payload = {
-      guild_id: XY_GUILD_ID,
-      order_id: manualOrderNo,
-      order_no: manualOrderNo,
-      discord_id: orderForm.discord_id,
-      staff_name: staffName,
-      assigned_player: orderForm.discord_id,
-      customer_id: "manual",
-      customer_name: "手動新增",
-      service_name: orderForm.service_name || null,
-      service: orderForm.service_name || null,
-      order_amount: orderAmount,
-      price: orderAmount,
-      staff_salary: staffSalary,
-      bonus_amount: bonusAmount,
-      salary_rate: salaryRate,
-      salary_level: `${salaryRate}%`,
-      platform_income: orderAmount,
-      platform_expense: staffSalary + bonusAmount,
-      status: orderForm.status || "未發薪",
-      order_finished_at: finishedAt,
-      completed_at: finishedAt,
-      created_at: finishedAt,
-      is_deleted: false,
-    };
+    const orderNo = makeOrderNo();
 
-    const { error } = await supabase.from("play_orders").insert(payload);
+    const { error } = await supabase.from("xy_play_orders").insert({
+      ...payload,
+      order_id: orderNo,
+      order_no: orderNo,
+      created_at: new Date().toISOString(),
+    });
 
     setSavingOrder(false);
 
     if (error) {
-      console.error("insert order error:", error, payload);
-      alert(
-        "新增訂單失敗：\n" +
-          (error.message || "未知錯誤") +
-          "\n\n請把這段錯誤貼給我。"
-      );
+      console.error("insert xy order error:", error);
+      alert(`新增 XY 訂單失敗：${error.message}`);
       return;
     }
 
-    alert(`訂單已新增\n抽成：${salaryRate}%\n薪資：${staffSalary}`);
+    alert("XY 訂單已新增");
     resetOrderForm();
-    await loadSalaryData();
+    await loadAll();
+  }
+
+  async function deleteOrder(order: SalaryOrder) {
+    const ok = window.confirm(
+      `確定要刪除這筆訂單嗎？\n${getOrderStaffName(order)}｜${money(
+        getOrderAmount(order)
+      )}`
+    );
+
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from("xy_play_orders")
+      .update({
+        is_deleted: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", order.id);
+
+    if (error) {
+      console.error("delete xy order error:", error);
+      alert(`刪除 XY 訂單失敗：${error.message}`);
+      return;
+    }
+
+    alert("XY 訂單已刪除");
+    await loadAll();
   }
 
   async function saveBonus() {
@@ -812,193 +793,199 @@ export default function AdminSalaryPage() {
       return;
     }
 
-    const amount = Number(bonusForm.amount || 0);
-
-    if (amount <= 0) {
-      alert("請輸入獎金金額");
+    if (!bonusForm.description.trim()) {
+      alert("請輸入獎金 / 扣除說明");
       return;
     }
 
-    const staffName = getStaffNameByDiscordId(staffList, bonusForm.discord_id);
-    const createdAt = datetimeToIso(bonusForm.created_at);
+    const amount = numberValue(bonusForm.amount);
+
+    if (!amount) {
+      alert("請輸入獎金 / 扣除金額");
+      return;
+    }
 
     setSavingBonus(true);
 
-    const { error } = await supabase.from("players_bonus").insert({
+    const { error } = await supabase.from("xy_players_bonus").insert({
       discord_id: bonusForm.discord_id,
-      staff_name: staffName,
-      bonus_type: bonusForm.bonus_type || null,
-      description: bonusForm.description || null,
+      staff_name: bonusForm.staff_name,
+      bonus_type: bonusForm.bonus_type || "獎金",
+      description: bonusForm.description.trim(),
       amount,
-      created_at: createdAt,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
 
     setSavingBonus(false);
 
     if (error) {
-      console.error("insert bonus error:", error);
-      alert("新增獎金失敗");
+      console.error("insert xy bonus error:", error);
+      alert(`新增 XY 獎金 / 扣除失敗：${error.message}`);
       return;
     }
 
-    alert("獎金已新增");
-    setBonusForm({
-      discord_id: "",
-      bonus_type: "",
-      description: "",
-      amount: "",
-      created_at: getNowInput(),
-    });
-    await loadSalaryData();
+    alert("XY 獎金 / 扣除已新增");
+    resetBonusForm();
+    await loadAll();
   }
 
-  async function saveDeduction() {
-    if (!deductionForm.discord_id) {
-      alert("請選擇員工");
-      return;
-    }
-
-    const amount = Number(deductionForm.amount || 0);
-
-    if (amount <= 0) {
-      alert("請輸入扣除金額");
-      return;
-    }
-
-    if (!deductionForm.description.trim()) {
-      alert("請填寫扣除備註");
-      return;
-    }
-
-    const staffName = getStaffNameByDiscordId(
-      staffList,
-      deductionForm.discord_id
-    );
-    const createdAt = datetimeToIso(deductionForm.created_at);
-
-    setSavingDeduction(true);
-
-    const { error } = await supabase.from("players_bonus").insert({
-      discord_id: deductionForm.discord_id,
-      staff_name: staffName,
-      bonus_type: "薪水扣除",
-      description: deductionForm.description.trim(),
-      amount: -Math.abs(amount),
-      created_at: createdAt,
-    });
-
-    setSavingDeduction(false);
-
-    if (error) {
-      console.error("insert salary deduction error:", error);
-      alert("新增薪水扣除失敗");
-      return;
-    }
-
-    alert("薪水扣除已新增");
-    setDeductionForm({
-      discord_id: "",
-      amount: "",
-      description: "",
-      created_at: getNowInput(),
-    });
-    await loadSalaryData();
-  }
-
-  async function markOrderPaid(order: SalaryOrder) {
-    const ok = confirm(
-      `確定要將「${order.staff_name || order.discord_id}」這筆訂單標記為已發薪嗎？`
+  async function deleteBonus(bonus: Bonus) {
+    const ok = window.confirm(
+      `確定要刪除這筆獎金 / 扣除嗎？\n${
+        bonus.staff_name || bonus.discord_id
+      }｜${money(bonus.amount)}`
     );
 
     if (!ok) return;
 
     const { error } = await supabase
-      .from("play_orders")
-      .update({
-        status: "已發薪",
-      })
-      .eq("id", order.id)
-      .or(XY_PLAY_ORDER_FILTER);
+      .from("xy_players_bonus")
+      .delete()
+      .eq("id", bonus.id);
 
     if (error) {
-      console.error("mark paid error:", error);
-      alert("標記發薪失敗");
+      console.error("delete xy bonus error:", error);
+      alert(`刪除 XY 獎金 / 扣除失敗：${error.message}`);
       return;
     }
 
-    await loadSalaryData();
+    alert("XY 獎金 / 扣除已刪除");
+    await loadAll();
   }
 
-  async function deleteOrder(order: SalaryOrder) {
-    const ok = confirm("確定要刪除這筆訂單嗎？");
+  async function markFilteredOrdersPaid() {
+    const unpaidOrders = filteredOrders.filter(
+      (order) => order.status !== "已發薪"
+    );
 
-    if (!ok) return;
-
-    const { error } = await supabase
-      .from("play_orders")
-      .update({
-        is_deleted: true,
-      })
-      .eq("id", order.id)
-      .or(XY_PLAY_ORDER_FILTER);
-
-    if (error) {
-      console.error("delete order error:", error);
-      alert("刪除訂單失敗");
+    if (unpaidOrders.length === 0) {
+      alert("目前篩選結果沒有未發薪訂單");
       return;
     }
 
-    await loadSalaryData();
-  }
-
-  async function bulkMarkPaid() {
-    const startIso = dateToStartIso(payForm.start_date);
-    const endIso = dateToEndIso(payForm.end_date);
-
-    if (!startIso || !endIso) {
-      alert("請選擇發薪時間範圍");
-      return;
-    }
-
-    const label =
-      payForm.discord_id === "all"
-        ? "全部員工"
-        : getStaffNameByDiscordId(staffList, payForm.discord_id);
-
-    const ok = confirm(
-      `確定要將「${label}」在指定時間內的未發薪訂單全部標記為已發薪嗎？`
+    const ok = window.confirm(
+      `確定要把目前篩選出的 ${unpaidOrders.length} 筆訂單標記為已發薪嗎？`
     );
 
     if (!ok) return;
 
-    setPaying(true);
+    setMarkingPaid(true);
 
-    let query = supabase
-      .from("play_orders")
+    const ids = unpaidOrders.map((order) => order.id);
+
+    const { error } = await supabase
+      .from("xy_play_orders")
       .update({
         status: "已發薪",
+        updated_at: new Date().toISOString(),
       })
-      .or(XY_PLAY_ORDER_FILTER)
-      .gte("order_finished_at", startIso)
-      .lte("order_finished_at", endIso)
-      .neq("status", "已發薪");
+      .in("id", ids);
 
-    if (payForm.discord_id !== "all") {
-      query = query.eq("discord_id", payForm.discord_id);
-    }
-
-    const { error } = await query;
-
-    setPaying(false);
+    setMarkingPaid(false);
 
     if (error) {
-      console.error("bulk pay error:", error);
-      alert("批次發薪失敗");
+      console.error("mark xy paid error:", error);
+      alert(`標記已發薪失敗：${error.message}`);
       return;
     }
 
-    alert("批次發薪完成");
-    await loadSalaryData();
+    alert("已標記為已發薪");
+    await loadAll();
+  }
+
+  function hasMonthlyBenefitBonus(discordId: string, description: string) {
+    return bonuses.some(
+      (bonus) =>
+        bonus.discord_id === discordId &&
+        String(bonus.description || "").includes(description)
+    );
+  }
+
+  async function generateMonthlyBenefits() {
+    const ok = window.confirm(
+      `確定要產生 ${selectedMonth} 的福利獎金嗎？\n\n規則：\n1. 當月累積薪水 > 5000，發 250 元，每月一次。\n2. 生日月份符合本月，發 200 元，每月一次。`
+    );
+
+    if (!ok) return;
+
+    setGeneratingBenefits(true);
+
+    const selectedMonthNumber = getSelectedMonthNumber(selectedMonth);
+    const rows: any[] = [];
+
+    for (const staff of staffList) {
+      if (!staff.discord_id) continue;
+      if (staff.is_active === false) continue;
+
+      const staffName = getDisplayName(staff);
+
+      const staffOrders = orders.filter(
+        (order) => order.discord_id === staff.discord_id
+      );
+
+      const monthSalary = staffOrders.reduce(
+        (sum, order) =>
+          sum +
+          Number(order.staff_salary || 0) +
+          Number(order.bonus_amount || 0),
+        0
+      );
+
+      const salaryBenefitDescription = `每月薪資達標獎金｜${selectedMonth}`;
+      const birthdayBenefitDescription = `生日禮金｜${selectedMonth}`;
+
+      if (
+        monthSalary > 5000 &&
+        !hasMonthlyBenefitBonus(staff.discord_id, salaryBenefitDescription)
+      ) {
+        rows.push({
+          discord_id: staff.discord_id,
+          staff_name: staffName,
+          bonus_type: "福利獎金",
+          description: salaryBenefitDescription,
+          amount: 250,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      const birthdayMonth = getBirthdayMonth(staff);
+
+      if (
+        birthdayMonth === selectedMonthNumber &&
+        !hasMonthlyBenefitBonus(staff.discord_id, birthdayBenefitDescription)
+      ) {
+        rows.push({
+          discord_id: staff.discord_id,
+          staff_name: staffName,
+          bonus_type: "生日禮金",
+          description: birthdayBenefitDescription,
+          amount: 200,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    if (rows.length === 0) {
+      setGeneratingBenefits(false);
+      alert("目前沒有需要新增的福利獎金，或本月已經新增過。");
+      return;
+    }
+
+    const { error } = await supabase.from("xy_players_bonus").insert(rows);
+
+    setGeneratingBenefits(false);
+
+    if (error) {
+      console.error("generate xy benefits error:", error);
+      alert(`產生福利獎金失敗：${error.message}`);
+      return;
+    }
+
+    alert(`已新增 ${rows.length} 筆福利獎金`);
+    await loadAll();
   }
 
   if (checking) {
@@ -1007,7 +994,7 @@ export default function AdminSalaryPage() {
         <div className="rounded-[28px] border border-orange-100 bg-white px-8 py-7 text-center shadow-sm shadow-orange-100">
           <Loader2 className="mx-auto animate-spin text-orange-500" size={34} />
           <p className="mt-4 text-sm font-semibold text-slate-600">
-            正在檢查後台權限...
+            正在檢查 XY 後台權限...
           </p>
         </div>
       </main>
@@ -1021,11 +1008,11 @@ export default function AdminSalaryPage() {
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div>
               <Link
-                href="/admin"
+                href="/xy/admin"
                 className="inline-flex items-center gap-2 text-sm font-bold text-orange-600 hover:text-orange-700"
               >
                 <ArrowLeft size={16} />
-                回管理後台
+                回 XY 管理後台
               </Link>
 
               <p className="mt-4 text-sm font-bold text-orange-600">
@@ -1033,170 +1020,122 @@ export default function AdminSalaryPage() {
               </p>
 
               <h1 className="mt-1 text-2xl font-black text-slate-900 md:text-3xl">
-                薪資總表
+                XY 薪資總表
               </h1>
 
               <p className="mt-2 text-sm text-slate-500">
-                管理訂單薪資、獎金、收入支出與批次發薪。
+                固定 75%，當月接單滿 7000 變 80%，單筆大單會自動提高該筆抽成。
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/xy/admin/payroll"
+                className="inline-flex items-center justify-center rounded-full border border-orange-100 bg-white px-5 py-2.5 text-sm font-bold text-orange-600 hover:bg-orange-50"
+              >
+                發薪模式
+              </Link>
+
+              <button
+                onClick={loadAll}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
+              >
+                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                重新整理
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <section className="grid gap-4 md:grid-cols-5">
+          <StatCard title="訂單總收入" value={money(totalIncome)} />
+          <StatCard title="薪資支出" value={money(totalSalary)} />
+          <StatCard title="訂單獎金" value={money(totalOrderBonus)} />
+          <StatCard title="額外獎金 / 扣除" value={money(totalBonus)} />
+          <StatCard title="預估平台收入" value={money(platformIncome)} />
+        </section>
+
+        <section className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
+                <Sparkles size={20} className="text-orange-500" />
+                本月福利獎金
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                當月累積薪水大於 5000 自動補 250；生日月份自動補 200，同月份同員工只會新增一次。
               </p>
             </div>
 
             <button
-              onClick={loadAll}
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
+              onClick={generateMonthlyBenefits}
+              disabled={generatingBenefits || loading}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-amber-200 hover:bg-amber-600 disabled:opacity-60"
             >
-              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-              重新整理
+              <Sparkles size={16} />
+              {generatingBenefits ? "產生中..." : `產生 ${selectedMonth} 福利獎金`}
             </button>
           </div>
-        </header>
-
-        <section className="grid gap-4 md:grid-cols-4">
-          <StatCard title="總收入" value={money(totalIncome)} />
-          <StatCard title="薪資支出" value={money(totalSalary)} />
-          <StatCard title="獎金 / 扣除" value={money(totalBonus)} />
-          <StatCard title="未發薪" value={money(unpaidTotal)} />
         </section>
 
-        <section className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
-          <div className="grid gap-4 md:grid-cols-5">
-            <Field label="開始日期">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(event) => setStartDate(event.target.value)}
-              />
-            </Field>
-
-            <Field label="結束日期">
-              <input
-                type="date"
-                value={endDate}
-                onChange={(event) => setEndDate(event.target.value)}
-              />
-            </Field>
-
-            <Field label="員工">
-              <select
-                value={filterStaffId}
-                onChange={(event) => setFilterStaffId(event.target.value)}
-              >
-                <option value="all">全部員工</option>
-                {staffList.map((staff) => (
-                  <option key={staff.id} value={staff.discord_id}>
-                    {getDisplayStaffName(staff)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="搜尋">
-              <div className="flex items-center gap-2 rounded-xl border border-orange-100 bg-orange-50/60 px-3">
-                <Search size={16} className="text-orange-500" />
-                <input
-                  value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
-                  placeholder="搜尋訂單、員工、服務"
-                  className="min-h-0 flex-1 border-none bg-transparent p-0 focus:shadow-none"
-                />
-              </div>
-            </Field>
-
-            <div className="flex items-end">
-              <button
-                onClick={loadSalaryData}
-                className="flex w-full items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-orange-600"
-              >
-                <CalendarDays size={16} />
-                查詢
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-2">
+        <section className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
           <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
-                  <Plus size={20} className="text-orange-500" />
-                  {editingOrderId ? "編輯訂單" : "新增訂單"}
+                  <WalletCards size={20} className="text-orange-500" />
+                  {orderForm.id ? "編輯訂單" : "新增訂單"}
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  可手動補登訂單，薪資會依抽成比例自動計算。
+                  抽成會依 XY 規則自動計算，不需要手動選遊戲。
                 </p>
               </div>
 
-              {editingOrderId ? (
+              {orderForm.id ? (
                 <button
                   onClick={resetOrderForm}
-                  className="rounded-full border border-orange-100 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-orange-50"
+                  className="rounded-full border border-orange-100 bg-white px-4 py-2 text-sm font-bold text-orange-600 hover:bg-orange-50"
                 >
                   取消編輯
                 </button>
               ) : null}
             </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="員工">
                 <select
                   value={orderForm.discord_id}
-                  onChange={(event) =>
-                    updateOrderForm("discord_id", event.target.value)
-                  }
+                  onChange={(event) => handleOrderStaffChange(event.target.value)}
                 >
-                  <option value="">選擇員工</option>
+                  <option value="">請選擇員工</option>
                   {staffList.map((staff) => (
                     <option key={staff.id} value={staff.discord_id}>
-                      {getDisplayStaffName(staff)}
+                      {getDisplayName(staff)}
                     </option>
                   ))}
                 </select>
               </Field>
 
-              <Field label="服務名稱">
+              <Field label="客人名稱">
+                <input
+                  value={orderForm.customer_name}
+                  onChange={(event) =>
+                    updateOrderForm("customer_name", event.target.value)
+                  }
+                  placeholder="例如：小明 / 客人暱稱"
+                />
+              </Field>
+
+              <Field label="項目名稱">
                 <input
                   value={orderForm.service_name}
                   onChange={(event) =>
                     updateOrderForm("service_name", event.target.value)
                   }
-                  placeholder="例如：娛樂陪玩"
-                />
-              </Field>
-
-              <Field label="訂單金額">
-                <input
-                  type="number"
-                  value={orderForm.order_amount}
-                  onChange={(event) =>
-                    updateOrderForm("order_amount", event.target.value)
-                  }
-                  placeholder="例如：1000"
-                />
-              </Field>
-
-              <Field label="員工抽成">
-                <div className="flex min-h-[40px] items-center rounded-xl border border-orange-100 bg-orange-50/60 px-3 text-sm font-black text-orange-700">
-                  {orderForm.discord_id
-                    ? `${getStaffRate(
-                        staffList.find((item) => item.discord_id === orderForm.discord_id),
-                        orderForm.order_finished_at,
-                        orders
-                      )}%`
-                    : "請先選擇員工"}
-                </div>
-              </Field>
-
-              <Field label="訂單獎金">
-                <input
-                  type="number"
-                  value={orderForm.bonus_amount}
-                  onChange={(event) =>
-                    updateOrderForm("bonus_amount", event.target.value)
-                  }
-                  placeholder="沒有則填 0"
+                  placeholder="例如：陪玩薪資、陪聊薪資、活動薪資"
                 />
               </Field>
 
@@ -1210,7 +1149,58 @@ export default function AdminSalaryPage() {
                 />
               </Field>
 
-              <Field label="狀態">
+              <Field label="訂單金額">
+                <input
+                  type="number"
+                  min="0"
+                  value={orderForm.order_amount}
+                  onChange={(event) => handleOrderAmountChange(event.target.value)}
+                  placeholder="例如：1000"
+                />
+              </Field>
+
+              <Field label="自動抽成％">
+                <input
+                  type="number"
+                  value={orderForm.salary_rate}
+                  readOnly
+                  className="cursor-not-allowed bg-slate-50"
+                />
+              </Field>
+
+              <Field label="員工薪資">
+                <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+                  <input
+                    type="number"
+                    min="0"
+                    value={orderForm.staff_salary}
+                    readOnly
+                    className="cursor-not-allowed bg-slate-50"
+                    placeholder="系統自動計算"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={autoCalculateSalary}
+                    className="rounded-2xl border border-orange-100 px-4 py-2 text-sm font-bold text-orange-600 hover:bg-orange-50"
+                  >
+                    重新計算
+                  </button>
+                </div>
+              </Field>
+
+              <Field label="訂單獎金 / 扣除">
+                <input
+                  type="number"
+                  value={orderForm.bonus_amount}
+                  onChange={(event) =>
+                    updateOrderForm("bonus_amount", event.target.value)
+                  }
+                  placeholder="沒有就填 0；扣款可填負數"
+                />
+              </Field>
+
+              <Field label="發薪狀態">
                 <select
                   value={orderForm.status}
                   onChange={(event) =>
@@ -1219,21 +1209,32 @@ export default function AdminSalaryPage() {
                 >
                   <option value="未發薪">未發薪</option>
                   <option value="已發薪">已發薪</option>
-                  <option value="completed">completed</option>
-                  <option value="accepted">accepted</option>
                 </select>
               </Field>
 
-              <div className="flex items-end">
+              <div className="md:col-span-2 rounded-2xl border border-orange-100 bg-orange-50/60 p-4">
+                <p className="text-sm font-black text-orange-700">
+                  XY 抽成規則
+                </p>
+
+                <div className="mt-2 space-y-1 text-sm font-semibold text-slate-600">
+                  <p>基礎抽成：75%</p>
+                  <p>當月接單金額累積滿 7000：抽成 80%</p>
+                  <p>如果原本 75%，單筆金額大於 4999：該筆 80%</p>
+                  <p>如果原本 80%，單筆金額大於 4999：該筆 82%</p>
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
                 <button
                   onClick={saveOrder}
                   disabled={savingOrder}
-                  className="flex w-full items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-60"
+                  className="flex w-full items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-black text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
                 >
-                  <Save size={16} />
+                  <Save size={17} />
                   {savingOrder
                     ? "儲存中..."
-                    : editingOrderId
+                    : orderForm.id
                       ? "更新訂單"
                       : "新增訂單"}
                 </button>
@@ -1241,231 +1242,154 @@ export default function AdminSalaryPage() {
             </div>
           </div>
 
-          <div className="space-y-5">
-            <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
-              <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
-                <Gift size={20} className="text-orange-500" />
-                新增獎金
-              </h2>
+          <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+            <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
+              <Gift size={20} className="text-orange-500" />
+              新增獎金 / 扣除
+            </h2>
 
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <Field label="員工">
-                  <select
-                    value={bonusForm.discord_id}
-                    onChange={(event) =>
-                      updateBonusForm("discord_id", event.target.value)
-                    }
-                  >
-                    <option value="">選擇員工</option>
-                    {staffList.map((staff) => (
-                      <option key={staff.id} value={staff.discord_id}>
-                        {getDisplayStaffName(staff)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+            <p className="mt-1 text-sm text-slate-500">
+              獎金填正數，扣除填負數，例如：-100。
+            </p>
 
-                <Field label="獎金類型">
-                  <input
-                    value={bonusForm.bonus_type}
-                    onChange={(event) =>
-                      updateBonusForm("bonus_type", event.target.value)
-                    }
-                    placeholder="例如：活動獎金"
-                  />
-                </Field>
+            <div className="mt-5 space-y-3">
+              <Field label="員工">
+                <select
+                  value={bonusForm.discord_id}
+                  onChange={(event) => handleBonusStaffChange(event.target.value)}
+                >
+                  <option value="">請選擇員工</option>
+                  {staffList.map((staff) => (
+                    <option key={staff.id} value={staff.discord_id}>
+                      {getDisplayName(staff)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
 
-                <Field label="獎金金額">
-                  <input
-                    type="number"
-                    value={bonusForm.amount}
-                    onChange={(event) =>
-                      updateBonusForm("amount", event.target.value)
-                    }
-                    placeholder="例如：300"
-                  />
-                </Field>
+              <Field label="類型">
+                <select
+                  value={bonusForm.bonus_type}
+                  onChange={(event) =>
+                    updateBonusForm("bonus_type", event.target.value)
+                  }
+                >
+                  <option value="獎金">獎金</option>
+                  <option value="扣除">扣除</option>
+                  <option value="補薪">補薪</option>
+                  <option value="活動獎勵">活動獎勵</option>
+                  <option value="福利獎金">福利獎金</option>
+                  <option value="生日禮金">生日禮金</option>
+                  <option value="其他">其他</option>
+                </select>
+              </Field>
 
-                <Field label="建立時間">
-                  <input
-                    type="datetime-local"
-                    value={bonusForm.created_at}
-                    onChange={(event) =>
-                      updateBonusForm("created_at", event.target.value)
-                    }
-                  />
-                </Field>
+              <Field label="說明">
+                <input
+                  value={bonusForm.description}
+                  onChange={(event) =>
+                    updateBonusForm("description", event.target.value)
+                  }
+                  placeholder="例如：生日禮金 / 遲到扣款"
+                />
+              </Field>
 
-                <div className="md:col-span-2">
-                  <Field label="說明">
-                    <textarea
-                      value={bonusForm.description}
-                      onChange={(event) =>
-                        updateBonusForm("description", event.target.value)
-                      }
-                      placeholder="可填寫獎金原因"
-                    />
-                  </Field>
-                </div>
-
-                <div className="md:col-span-2">
-                  <button
-                    onClick={saveBonus}
-                    disabled={savingBonus}
-                    className="flex w-full items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-60"
-                  >
-                    <Save size={16} />
-                    {savingBonus ? "儲存中..." : "新增獎金"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-red-100 bg-white p-5 shadow-sm shadow-red-100">
-              <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
-                <MinusCircle size={20} className="text-red-500" />
-                新增薪水扣除
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-500">
-                扣除金額會以負數列入薪資明細。
-              </p>
-
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <Field label="員工">
-                  <select
-                    value={deductionForm.discord_id}
-                    onChange={(event) =>
-                      updateDeductionForm("discord_id", event.target.value)
-                    }
-                  >
-                    <option value="">選擇員工</option>
-                    {staffList.map((staff) => (
-                      <option key={staff.id} value={staff.discord_id}>
-                        {getDisplayStaffName(staff)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field label="扣除金額">
-                  <input
-                    type="number"
-                    min="1"
-                    value={deductionForm.amount}
-                    onChange={(event) =>
-                      updateDeductionForm("amount", event.target.value)
-                    }
-                    placeholder="例如：300"
-                  />
-                </Field>
-
-                <Field label="扣除時間">
-                  <input
-                    type="datetime-local"
-                    value={deductionForm.created_at}
-                    onChange={(event) =>
-                      updateDeductionForm("created_at", event.target.value)
-                    }
-                  />
-                </Field>
-
-                <div className="md:col-span-2">
-                  <Field label="備註">
-                    <textarea
-                      value={deductionForm.description}
-                      onChange={(event) =>
-                        updateDeductionForm("description", event.target.value)
-                      }
-                      placeholder="例如：遲到、請假扣款、手動修正"
-                    />
-                  </Field>
-                </div>
-
-                <div className="md:col-span-2">
-                  <button
-                    onClick={saveDeduction}
-                    disabled={savingDeduction}
-                    className="flex w-full items-center justify-center gap-2 rounded-full bg-red-500 px-5 py-3 text-sm font-bold text-white hover:bg-red-600 disabled:opacity-60"
-                  >
-                    <Save size={16} />
-                    {savingDeduction ? "儲存中..." : "新增扣除"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
-              <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
-                <CheckCircle2 size={20} className="text-orange-500" />
-                批次發薪
-              </h2>
-
-              <div className="mt-5 grid gap-4 md:grid-cols-3">
-                <Field label="員工">
-                  <select
-                    value={payForm.discord_id}
-                    onChange={(event) =>
-                      setPayForm((prev) => ({
-                        ...prev,
-                        discord_id: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="all">全部員工</option>
-                    {staffList.map((staff) => (
-                      <option key={staff.id} value={staff.discord_id}>
-                        {getDisplayStaffName(staff)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field label="開始">
-                  <input
-                    type="date"
-                    value={payForm.start_date}
-                    onChange={(event) =>
-                      setPayForm((prev) => ({
-                        ...prev,
-                        start_date: event.target.value,
-                      }))
-                    }
-                  />
-                </Field>
-
-                <Field label="結束">
-                  <input
-                    type="date"
-                    value={payForm.end_date}
-                    onChange={(event) =>
-                      setPayForm((prev) => ({
-                        ...prev,
-                        end_date: event.target.value,
-                      }))
-                    }
-                  />
-                </Field>
-              </div>
+              <Field label="金額">
+                <input
+                  type="number"
+                  value={bonusForm.amount}
+                  onChange={(event) =>
+                    updateBonusForm("amount", event.target.value)
+                  }
+                  placeholder="例如：300；扣除請填 -100"
+                />
+              </Field>
 
               <button
-                onClick={bulkMarkPaid}
-                disabled={paying}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-600 disabled:opacity-60"
+                onClick={saveBonus}
+                disabled={savingBonus}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-black text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
               >
-                <CheckCircle2 size={16} />
-                {paying ? "處理中..." : "將指定範圍標記為已發薪"}
+                <Plus size={17} />
+                {savingBonus ? "新增中..." : "新增獎金 / 扣除"}
+              </button>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-orange-100 bg-orange-50/60 p-4">
+              <p className="text-sm font-black text-orange-700">
+                目前篩選未發薪
+              </p>
+
+              <p className="mt-2 text-2xl font-black text-slate-900">
+                {money(unpaidAmount)}
+              </p>
+
+              <button
+                onClick={markFilteredOrdersPaid}
+                disabled={markingPaid}
+                className="mt-4 w-full rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-bold text-orange-600 hover:bg-orange-50 disabled:opacity-60"
+              >
+                {markingPaid ? "標記中..." : "將目前篩選訂單標記已發薪"}
               </button>
             </div>
           </div>
         </section>
 
+        <section className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+          <div className="grid gap-3 md:grid-cols-[1fr_220px_180px_160px]">
+            <div className="flex items-center gap-2 rounded-2xl border border-orange-100 bg-orange-50/60 px-3 py-2">
+              <Search size={17} className="text-orange-500" />
+              <input
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                placeholder="搜尋訂單、員工、客人、項目"
+                className="min-h-0 flex-1 border-none bg-transparent p-0 text-sm outline-none focus:shadow-none"
+              />
+            </div>
+
+            <select
+              value={staffFilter}
+              onChange={(event) => setStaffFilter(event.target.value)}
+              className="rounded-2xl border border-orange-100 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none"
+            >
+              <option value="all">全部員工</option>
+              {staffList.map((staff) => (
+                <option key={staff.id} value={staff.discord_id}>
+                  {getDisplayName(staff)}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="rounded-2xl border border-orange-100 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none"
+            >
+              <option value="all">全部狀態</option>
+              <option value="未發薪">未發薪</option>
+              <option value="已發薪">已發薪</option>
+            </select>
+
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="rounded-2xl border border-orange-100 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none"
+            />
+          </div>
+
+          <button
+            onClick={loadAll}
+            disabled={loading}
+            className="mt-3 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
+          >
+            查詢月份
+          </button>
+        </section>
+
         <section className="rounded-[28px] border border-orange-100 bg-white shadow-sm shadow-orange-100">
           <div className="border-b border-orange-100 px-5 py-4">
-            <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
-              <WalletCards size={20} className="text-orange-500" />
-              訂單薪資列表
-            </h2>
+            <h2 className="text-lg font-black text-slate-900">訂單列表</h2>
 
             <p className="mt-1 text-sm text-slate-500">
               目前顯示 {filteredOrders.length} 筆訂單。
@@ -1478,7 +1402,7 @@ export default function AdminSalaryPage() {
             </div>
           ) : filteredOrders.length === 0 ? (
             <div className="px-5 py-12 text-center text-sm font-semibold text-slate-400">
-              沒有符合條件的訂單
+              沒有符合的訂單
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -1486,9 +1410,10 @@ export default function AdminSalaryPage() {
                 <thead>
                   <tr>
                     <th>完成時間</th>
+                    <th>訂單編號</th>
                     <th>員工</th>
                     <th>客人</th>
-                    <th>服務</th>
+                    <th>項目</th>
                     <th>訂單金額</th>
                     <th>抽成</th>
                     <th>薪資</th>
@@ -1501,27 +1426,15 @@ export default function AdminSalaryPage() {
                 <tbody>
                   {filteredOrders.map((order) => (
                     <tr key={order.id}>
-                      <td>
-                        {formatDateTime(
-                          order.order_finished_at ||
-                            order.completed_at ||
-                            order.created_at
-                        )}
-                      </td>
-                      <td>
-                        <p className="font-bold text-slate-800">
-                          {order.staff_name || order.discord_id}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {order.discord_id}
-                        </p>
-                      </td>
+                      <td>{formatDateTime(getOrderSourceDate(order))}</td>
+                      <td>{order.order_no || order.order_id || "-"}</td>
+                      <td>{getOrderStaffName(order)}</td>
                       <td>{getOrderCustomer(order)}</td>
                       <td>{getOrderService(order)}</td>
                       <td className="font-bold text-slate-700">
                         {money(getOrderAmount(order))}
                       </td>
-                      <td>{order.salary_rate || "-"}%</td>
+                      <td>{Number(order.salary_rate || 0)}%</td>
                       <td className="font-bold text-orange-600">
                         {money(order.staff_salary)}
                       </td>
@@ -1538,28 +1451,21 @@ export default function AdminSalaryPage() {
                         </span>
                       </td>
                       <td>
-                        <div className="flex items-center gap-2">
+                        <div className="flex gap-2">
                           <button
                             onClick={() => editOrder(order)}
-                            className="rounded-full border border-orange-100 bg-white px-3 py-1.5 text-xs font-bold text-orange-600 hover:bg-orange-50"
+                            className="rounded-full border border-orange-100 p-2 text-orange-600 hover:bg-orange-50"
+                            title="編輯"
                           >
-                            <Edit3 size={14} />
+                            <Edit3 size={15} />
                           </button>
-
-                          {order.status !== "已發薪" ? (
-                            <button
-                              onClick={() => markOrderPaid(order)}
-                              className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-100"
-                            >
-                              <CheckCircle2 size={14} />
-                            </button>
-                          ) : null}
 
                           <button
                             onClick={() => deleteOrder(order)}
-                            className="rounded-full border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100"
+                            className="rounded-full border border-red-100 p-2 text-red-500 hover:bg-red-50"
+                            title="刪除"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={15} />
                           </button>
                         </div>
                       </td>
@@ -1573,8 +1479,7 @@ export default function AdminSalaryPage() {
 
         <section className="rounded-[28px] border border-orange-100 bg-white shadow-sm shadow-orange-100">
           <div className="border-b border-orange-100 px-5 py-4">
-            <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
-              <BadgeDollarSign size={20} className="text-orange-500" />
+            <h2 className="text-lg font-black text-slate-900">
               獎金 / 扣除列表
             </h2>
 
@@ -1584,8 +1489,8 @@ export default function AdminSalaryPage() {
           </div>
 
           {filteredBonuses.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm font-semibold text-slate-400">
-              沒有符合條件的獎金或扣除
+            <div className="px-5 py-12 text-center text-sm font-semibold text-slate-400">
+              沒有獎金 / 扣除紀錄
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -1597,6 +1502,7 @@ export default function AdminSalaryPage() {
                     <th>類型</th>
                     <th>說明</th>
                     <th>金額</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
 
@@ -1604,14 +1510,7 @@ export default function AdminSalaryPage() {
                   {filteredBonuses.map((bonus) => (
                     <tr key={bonus.id}>
                       <td>{formatDateTime(bonus.created_at)}</td>
-                      <td>
-                        <p className="font-bold text-slate-800">
-                          {bonus.staff_name || bonus.discord_id}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {bonus.discord_id}
-                        </p>
-                      </td>
+                      <td>{bonus.staff_name || bonus.discord_id}</td>
                       <td>{bonus.bonus_type || "-"}</td>
                       <td>{bonus.description || "-"}</td>
                       <td
@@ -1622,6 +1521,15 @@ export default function AdminSalaryPage() {
                         }`}
                       >
                         {money(bonus.amount)}
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => deleteBonus(bonus)}
+                          className="rounded-full border border-red-100 p-2 text-red-500 hover:bg-red-50"
+                          title="刪除"
+                        >
+                          <Trash2 size={15} />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1649,7 +1557,7 @@ function Field({
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <label className="block">
