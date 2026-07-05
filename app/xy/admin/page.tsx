@@ -1,37 +1,34 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
-  ArrowRight,
-  Gamepad2,
+  Banknote,
+  CalendarHeart,
   Loader2,
   LogOut,
   RefreshCw,
-  ShieldCheck,
+  Settings2,
   Users,
   WalletCards,
 } from "lucide-react";
 
-type Admin = {
+type Staff = {
   id: string;
   discord_id: string;
   discord_name?: string | null;
   display_name?: string | null;
-  is_active?: boolean | null;
-};
-
-type Staff = {
-  id: string;
-  discord_id: string;
+  real_name?: string | null;
   is_active?: boolean | null;
   is_online?: boolean | null;
 };
 
-type Order = {
+type SalaryOrder = {
   id: string;
   order_amount?: number | null;
+  price?: number | null;
   staff_salary?: number | null;
   bonus_amount?: number | null;
   status?: string | null;
@@ -41,7 +38,12 @@ type Order = {
 type Bonus = {
   id: string;
   amount?: number | null;
+  status?: string | null;
 };
+
+function money(value: number | string | null | undefined) {
+  return `$${Number(value || 0).toLocaleString("zh-TW")}`;
+}
 
 function getDiscordIdFromSession(session: any) {
   const user = session?.user;
@@ -57,75 +59,55 @@ function getDiscordIdFromSession(session: any) {
   ).trim();
 }
 
-function money(value: number | string | null | undefined) {
-  return `$${Number(value || 0).toLocaleString("zh-TW")}`;
+function getCurrentMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+  };
 }
 
 export default function XYAdminPage() {
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [admin, setAdmin] = useState<Admin | null>(null);
   const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<SalaryOrder[]>([]);
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
 
-  const activeStaffCount = useMemo(() => {
-    return staffList.filter((staff) => staff.is_active !== false).length;
-  }, [staffList]);
+  const activeStaffCount = staffList.filter(
+    (staff) => staff.is_active !== false
+  ).length;
 
-  const onlineStaffCount = useMemo(() => {
-    return staffList.filter((staff) => staff.is_online).length;
-  }, [staffList]);
+  const onlineStaffCount = staffList.filter((staff) => staff.is_online).length;
 
-  const totalIncome = useMemo(() => {
+  const monthIncome = useMemo(() => {
     return orders.reduce(
-      (sum, order) => sum + Number(order.order_amount || 0),
+      (sum, order) => sum + Number(order.order_amount || order.price || 0),
       0
     );
   }, [orders]);
 
-  const totalSalary = useMemo(() => {
+  const monthSalary = useMemo(() => {
     return orders.reduce(
-      (sum, order) => sum + Number(order.staff_salary || 0),
+      (sum, order) =>
+        sum + Number(order.staff_salary || 0) + Number(order.bonus_amount || 0),
       0
     );
   }, [orders]);
 
-  const totalBonus = useMemo(() => {
-    const orderBonus = orders.reduce(
-      (sum, order) => sum + Number(order.bonus_amount || 0),
-      0
-    );
+  const monthBonus = useMemo(() => {
+    return bonuses.reduce((sum, bonus) => sum + Number(bonus.amount || 0), 0);
+  }, [bonuses]);
 
-    const extraBonus = bonuses.reduce(
-      (sum, bonus) => sum + Number(bonus.amount || 0),
-      0
-    );
-
-    return orderBonus + extraBonus;
-  }, [orders, bonuses]);
-
-  const unpaidAmount = useMemo(() => {
-    const unpaidOrders = orders
-      .filter((order) => order.status !== "已發薪")
-      .reduce(
-        (sum, order) =>
-          sum +
-          Number(order.staff_salary || 0) +
-          Number(order.bonus_amount || 0),
-        0
-      );
-
-    const bonusTotal = bonuses.reduce(
-      (sum, bonus) => sum + Number(bonus.amount || 0),
-      0
-    );
-
-    return unpaidOrders + bonusTotal;
-  }, [orders, bonuses]);
+  const unpaidOrders = orders.filter((order) => order.status !== "已發薪").length;
+  const unpaidBonuses = bonuses.filter((bonus) => bonus.status !== "已發薪").length;
 
   useEffect(() => {
     boot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function boot() {
@@ -149,7 +131,7 @@ export default function XYAdminPage() {
         return;
       }
 
-      const { data: adminData, error } = await supabase
+      const { data: admin, error } = await supabase
         .from("xy_admins")
         .select("*")
         .eq("discord_id", discordId)
@@ -163,13 +145,12 @@ export default function XYAdminPage() {
         return;
       }
 
-      if (!adminData) {
+      if (!admin) {
         alert("你沒有 XY 後台管理權限");
         window.location.href = "/xy/staff";
         return;
       }
 
-      setAdmin(adminData as Admin);
       await loadDashboard();
     } catch (error) {
       console.error("xy admin boot error:", error);
@@ -183,16 +164,29 @@ export default function XYAdminPage() {
   async function loadDashboard() {
     setLoading(true);
 
+    const { startIso, endIso } = getCurrentMonthRange();
+
     const [staffRes, orderRes, bonusRes] = await Promise.all([
-      supabase.from("xy_players").select("id, discord_id, is_active, is_online"),
+      supabase
+        .from("xy_players")
+        .select("*")
+        .order("created_at", { ascending: false }),
       supabase
         .from("xy_play_orders")
-        .select(
-          "id, order_amount, staff_salary, bonus_amount, status, is_deleted"
-        )
-        .or("is_deleted.eq.false,is_deleted.is.null"),
-      supabase.from("xy_players_bonus").select("id, amount"),
+        .select("*")
+        .or("is_deleted.eq.false,is_deleted.is.null")
+        .gte("order_finished_at", startIso)
+        .lte("order_finished_at", endIso)
+        .order("order_finished_at", { ascending: false }),
+      supabase
+        .from("xy_players_bonus")
+        .select("*")
+        .gte("created_at", startIso)
+        .lte("created_at", endIso)
+        .order("created_at", { ascending: false }),
     ]);
+
+    setLoading(false);
 
     if (staffRes.error) {
       console.error("load xy staff error:", staffRes.error);
@@ -205,17 +199,15 @@ export default function XYAdminPage() {
       console.error("load xy orders error:", orderRes.error);
       setOrders([]);
     } else {
-      setOrders((orderRes.data || []) as Order[]);
+      setOrders((orderRes.data || []) as SalaryOrder[]);
     }
 
     if (bonusRes.error) {
-      console.error("load xy bonus error:", bonusRes.error);
+      console.error("load xy bonuses error:", bonusRes.error);
       setBonuses([]);
     } else {
       setBonuses((bonusRes.data || []) as Bonus[]);
     }
-
-    setLoading(false);
   }
 
   async function logout() {
@@ -242,25 +234,12 @@ export default function XYAdminPage() {
         <header className="rounded-[30px] border border-orange-100 bg-white px-6 py-5 shadow-sm shadow-orange-100">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="flex items-center gap-2 text-sm font-black text-orange-600">
-                <ShieldCheck size={17} />
-                XY陪玩 Admin
-              </p>
-
-              <h1 className="mt-2 text-2xl font-black text-slate-900 md:text-3xl">
-                XY陪玩薪資網｜管理後台
+              <p className="text-sm font-bold text-orange-600">XY Admin</p>
+              <h1 className="mt-1 text-2xl font-black text-slate-900 md:text-3xl">
+                XY陪玩｜管理後台
               </h1>
-
               <p className="mt-2 text-sm text-slate-500">
-                管理員工資料、薪資訂單、獎金扣除與發薪狀態。
-              </p>
-
-              <p className="mt-2 text-xs font-semibold text-slate-400">
-                目前登入：
-                {admin?.display_name ||
-                  admin?.discord_name ||
-                  admin?.discord_id ||
-                  "管理員"}
+                管理員工、薪資總表與發薪預覽。
               </p>
             </div>
 
@@ -268,12 +247,9 @@ export default function XYAdminPage() {
               <button
                 onClick={loadDashboard}
                 disabled={loading}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-orange-100 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-orange-50 disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-orange-100 bg-white px-4 py-2 text-sm font-bold text-orange-600 hover:bg-orange-50 disabled:opacity-60"
               >
-                <RefreshCw
-                  size={16}
-                  className={loading ? "animate-spin" : ""}
-                />
+                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
                 重新整理
               </button>
 
@@ -288,41 +264,67 @@ export default function XYAdminPage() {
           </div>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-4">
-          <StatCard title="員工總數" value={`${staffList.length} 人`} />
+        <section className="grid gap-4 md:grid-cols-5">
           <StatCard title="啟用員工" value={`${activeStaffCount} 人`} />
           <StatCard title="目前上線" value={`${onlineStaffCount} 人`} />
-          <StatCard title="訂單筆數" value={`${orders.length} 筆`} />
+          <StatCard title="本月收入" value={money(monthIncome)} />
+          <StatCard title="本月薪資" value={money(monthSalary + monthBonus)} />
+          <StatCard title="待發項目" value={`${unpaidOrders + unpaidBonuses} 筆`} />
         </section>
 
-        <section className="grid gap-4 md:grid-cols-4">
-          <StatCard title="總收入" value={money(totalIncome)} />
-          <StatCard title="薪資支出" value={money(totalSalary)} />
-          <StatCard title="獎金 / 扣除" value={money(totalBonus)} />
-          <StatCard title="未發薪" value={money(unpaidAmount)} />
-        </section>
-
-        <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          <AdminCard
+        <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <HomeCard
+            href="/xy/admin/staff"
             icon={<Users size={24} />}
             title="員工管理"
-            desc="管理員工資料、抽成檔位、上下線狀態、薪資頻道與可接服務。"
-            href="/xy/admin/staff"
+            desc="管理員工資料、銀行帳號、生日月份、上下線狀態。"
           />
 
-          <AdminCard
+          <HomeCard
+            href="/xy/admin/salary"
             icon={<WalletCards size={24} />}
             title="薪資總表"
-            desc="新增訂單、修改薪資、建立獎金扣除、查詢發薪狀態與批次發薪。"
-            href="/xy/admin/salary"
+            desc="新增訂單、獎金扣除、福利獎金與薪資查詢。"
           />
 
-          <AdminCard
-            icon={<Gamepad2 size={24} />}
-            title="員工端預覽"
-            desc="前往 XY 員工薪資中心，確認員工端登入與畫面顯示。"
-            href="/xy/staff"
+          <HomeCard
+            href="/xy/admin/payroll"
+            icon={<Banknote size={24} />}
+            title="發薪模式"
+            desc="預覽有薪水要發的員工、銀行帳號、獎金與應發合計。"
           />
+
+          <HomeCard
+            href="/xy/staff"
+            icon={<CalendarHeart size={24} />}
+            title="員工端預覽"
+            desc="查看員工看到的薪資中心、抽成進度與福利狀態。"
+          />
+        </section>
+
+        <section className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+          <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
+            <Settings2 size={20} className="text-orange-500" />
+            XY 薪資規則
+          </h2>
+
+          <div className="mt-3 grid gap-3 text-sm font-semibold text-slate-600 md:grid-cols-2">
+            <div className="rounded-2xl bg-orange-50/70 p-4">
+              基礎抽成 75%，當月接單金額滿 7000 後變 80%。
+            </div>
+
+            <div className="rounded-2xl bg-orange-50/70 p-4">
+              單筆金額大於 4999 時，75% 該筆變 80%，80% 該筆變 82%。
+            </div>
+
+            <div className="rounded-2xl bg-orange-50/70 p-4">
+              當月累積薪水大於 5000，另得 250 元，每月一次。
+            </div>
+
+            <div className="rounded-2xl bg-orange-50/70 p-4">
+              生日月份當月另得 200 元生日禮金，每月一次。
+            </div>
+          </div>
         </section>
       </div>
     </main>
@@ -338,36 +340,30 @@ function StatCard({ title, value }: { title: string; value: string }) {
   );
 }
 
-function AdminCard({
+function HomeCard({
+  href,
   icon,
   title,
   desc,
-  href,
 }: {
-  icon: React.ReactNode;
+  href: string;
+  icon: ReactNode;
   title: string;
   desc: string;
-  href: string;
 }) {
   return (
     <Link
       href={href}
-      className="group rounded-[28px] border border-orange-100 bg-white p-6 shadow-sm shadow-orange-100 transition hover:-translate-y-0.5 hover:border-orange-200 hover:bg-orange-50/60"
+      className="group rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100 transition hover:-translate-y-0.5 hover:border-orange-200 hover:bg-orange-50/50"
     >
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-100 text-orange-600">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-100 text-orange-600 transition group-hover:bg-orange-500 group-hover:text-white">
         {icon}
       </div>
 
-      <h2 className="mt-5 text-xl font-black text-slate-900">{title}</h2>
-
-      <p className="mt-2 min-h-[48px] text-sm leading-6 text-slate-500">
+      <h2 className="mt-5 text-lg font-black text-slate-900">{title}</h2>
+      <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
         {desc}
       </p>
-
-      <div className="mt-5 inline-flex items-center gap-2 text-sm font-black text-orange-600">
-        進入功能
-        <ArrowRight size={16} className="transition group-hover:translate-x-1" />
-      </div>
     </Link>
   );
 }

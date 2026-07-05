@@ -380,14 +380,23 @@ export default function XYAdminStaffPage() {
               </p>
             </div>
 
-            <button
-              onClick={refresh}
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
-            >
-              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-              重新整理
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/xy/admin/payroll"
+                className="inline-flex items-center justify-center rounded-full border border-orange-100 bg-white px-5 py-2.5 text-sm font-bold text-orange-600 hover:bg-orange-50"
+              >
+                發薪模式
+              </Link>
+
+              <button
+                onClick={refresh}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
+              >
+                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                重新整理
+              </button>
+            </div>
           </div>
         </header>
 
