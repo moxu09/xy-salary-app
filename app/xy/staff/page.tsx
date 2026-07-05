@@ -30,6 +30,8 @@ type Staff = {
   is_online?: boolean | null;
   is_active?: boolean | null;
   can_take_order?: boolean | null;
+  commission_tier?: string | null;
+  commission_note?: string | null;
   created_at?: string | null;
 };
 
@@ -126,6 +128,12 @@ function getSelectedMonthNumber(monthText: string) {
 
 function money(value: number | null | undefined) {
   return `$${Number(value || 0).toLocaleString("zh-TW")}`;
+}
+
+function getManualBaseRate(tier?: string | null) {
+  if (tier === "rate_75") return 75;
+  if (tier === "rate_80") return 80;
+  return null;
 }
 
 function formatDateTime(value?: string | null) {
@@ -286,7 +294,9 @@ export default function XYStaffPage() {
     return orderTotal + monthBonus;
   }, [salaryOrders, monthBonus]);
 
-  const currentBaseRate = monthOrderAmount >= 7000 ? 80 : 75;
+  const manualBaseRate = getManualBaseRate(staff?.commission_tier);
+  const autoBaseRate = monthOrderAmount >= 7000 ? 80 : 75;
+  const currentBaseRate = manualBaseRate || autoBaseRate;
   const progress7000 = Math.min(100, Math.round((monthOrderAmount / 7000) * 100));
   const progress5000Salary = Math.min(
     100,
@@ -648,14 +658,18 @@ export default function XYStaffPage() {
                   </p>
 
                   <p className="pb-1 text-sm font-semibold text-slate-500">
-                    目前本月基礎抽成
+                    {manualBaseRate ? "後台手動設定" : "目前本月基礎抽成"}
                   </p>
                 </div>
 
                 <div className="mt-3 space-y-1 text-sm leading-6 text-slate-500">
-                  <p>基礎抽成：75%</p>
-                  <p>本月接單金額滿 7000 後：基礎抽成 80%</p>
+                  <p>自動判定：基礎抽成 75%</p>
+                  <p>自動判定本月接單金額滿 7000 後：基礎抽成 80%</p>
+                  <p>後台手動設定 75% 或 80% 時，會優先套用該檔位。</p>
                   <p>若該筆訂單金額大於 4999：75% 會變 80%，80% 會變 82%</p>
+                  {staff?.commission_note ? (
+                    <p>備註：{staff.commission_note}</p>
+                  ) : null}
                 </div>
               </div>
 

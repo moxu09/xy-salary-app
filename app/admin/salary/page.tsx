@@ -26,6 +26,8 @@ type Staff = {
   real_name?: string | null;
   birthday?: string | null;
   birthday_month?: number | null;
+  commission_tier?: string | null;
+  commission_note?: string | null;
   is_active?: boolean | null;
 };
 
@@ -238,6 +240,12 @@ function getBirthdayMonth(staff: Staff) {
   if (Number.isNaN(date.getTime())) return null;
 
   return date.getMonth() + 1;
+}
+
+function getManualBaseRate(tier?: string | null) {
+  if (tier === "rate_75") return 75;
+  if (tier === "rate_80") return 80;
+  return null;
 }
 
 function makeEmptyOrderForm(): OrderForm {
@@ -520,10 +528,16 @@ export default function XYAdminSalaryPage() {
     orderAmount: number,
     excludeOrderId?: string
   ) {
-    const previousMonthAmount = getStaffMonthOrderAmount(discordId, excludeOrderId);
-    const monthAmountWithCurrentOrder = previousMonthAmount + orderAmount;
+    const staff = staffList.find((item) => item.discord_id === discordId);
+    const manualBaseRate = getManualBaseRate(staff?.commission_tier);
+    let rate = manualBaseRate;
 
-    let rate = monthAmountWithCurrentOrder >= 7000 ? 80 : 75;
+    if (!rate) {
+      const previousMonthAmount = getStaffMonthOrderAmount(discordId, excludeOrderId);
+      const monthAmountWithCurrentOrder = previousMonthAmount + orderAmount;
+
+      rate = monthAmountWithCurrentOrder >= 7000 ? 80 : 75;
+    }
 
     if (orderAmount > 4999) {
       rate = rate >= 80 ? 82 : 80;
@@ -1090,7 +1104,7 @@ export default function XYAdminSalaryPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  抽成會依 XY 規則自動計算，不需要手動選遊戲。
+                  抽成會依 XY 規則自動計算；若員工管理有手動檔位，會優先套用。
                 </p>
               </div>
 
@@ -1159,7 +1173,7 @@ export default function XYAdminSalaryPage() {
                 />
               </Field>
 
-              <Field label="自動抽成％">
+              <Field label="套用抽成％">
                 <input
                   type="number"
                   value={orderForm.salary_rate}

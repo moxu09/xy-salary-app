@@ -32,6 +32,8 @@ type Staff = {
   is_active?: boolean | null;
   is_online?: boolean | null;
   can_take_order?: boolean | null;
+  commission_tier?: string | null;
+  commission_note?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -45,6 +47,8 @@ type StaffForm = {
   bank_name: string;
   bank_account: string;
   salary_channel_id: string;
+  commission_tier: string;
+  commission_note: string;
   is_active: boolean;
   is_online: boolean;
   can_take_order: boolean;
@@ -88,6 +92,18 @@ function getBirthdayMonthLabel(staff: Staff | null) {
   return month ? `${month} 月` : "未填寫";
 }
 
+function getCommissionTierLabel(value?: string | null) {
+  if (value === "rate_75") return "75%｜手動設定";
+  if (value === "rate_80") return "80%｜手動設定";
+  return "自動判定";
+}
+
+function getCommissionTierRank(value?: string | null) {
+  if (value === "rate_80") return 80;
+  if (value === "rate_75") return 75;
+  return 0;
+}
+
 function getDiscordIdFromSession(session: any) {
   const user = session?.user;
   const metadata = user?.user_metadata || {};
@@ -112,6 +128,8 @@ function makeForm(staff: Staff | null): StaffForm {
     bank_name: staff?.bank_name || "",
     bank_account: staff?.bank_account || "",
     salary_channel_id: staff?.salary_channel_id || "",
+    commission_tier: staff?.commission_tier || "auto",
+    commission_note: staff?.commission_note || "",
     is_active: staff?.is_active !== false,
     is_online: Boolean(staff?.is_online),
     can_take_order: staff?.can_take_order !== false,
@@ -141,6 +159,7 @@ export default function XYAdminStaffPage() {
           staff.real_name,
           staff.salary_channel_id,
           getBirthdayMonthLabel(staff),
+          getCommissionTierLabel(staff.commission_tier),
         ]
           .filter(Boolean)
           .join(" ")
@@ -173,6 +192,22 @@ export default function XYAdminStaffPage() {
     if (sortMode === "active_first") {
       list.sort(
         (a, b) => Number(a.is_active !== false) - Number(b.is_active !== false)
+      );
+    }
+
+    if (sortMode === "commission_desc") {
+      list.sort(
+        (a, b) =>
+          getCommissionTierRank(b.commission_tier) -
+          getCommissionTierRank(a.commission_tier)
+      );
+    }
+
+    if (sortMode === "commission_asc") {
+      list.sort(
+        (a, b) =>
+          getCommissionTierRank(a.commission_tier) -
+          getCommissionTierRank(b.commission_tier)
       );
     }
 
@@ -309,6 +344,8 @@ export default function XYAdminStaffPage() {
         bank_name: form.bank_name || null,
         bank_account: form.bank_account || null,
         salary_channel_id: form.salary_channel_id || null,
+        commission_tier: form.commission_tier || "auto",
+        commission_note: form.commission_note || null,
         is_active: form.is_active,
         is_online: form.is_online,
         can_take_order: form.can_take_order,
@@ -376,7 +413,7 @@ export default function XYAdminStaffPage() {
               </h1>
 
               <p className="mt-2 text-sm text-slate-500">
-                管理員工資料、生日月份、上下線狀態與薪資頻道。
+                管理員工資料、生日月份、上下線狀態、抽成檔位與薪資頻道。
               </p>
             </div>
 
@@ -438,6 +475,8 @@ export default function XYAdminStaffPage() {
                   <option value="birthday_desc">生日月份：12 月到 1 月</option>
                   <option value="online_first">上線優先</option>
                   <option value="active_first">啟用優先</option>
+                  <option value="commission_desc">抽成高到低</option>
+                  <option value="commission_asc">抽成低到高</option>
                 </select>
               </div>
             </div>
@@ -492,6 +531,10 @@ export default function XYAdminStaffPage() {
                             <p className="mt-1 flex items-center gap-1 truncate text-xs font-bold text-orange-600">
                               <CalendarHeart size={13} />
                               生日月份：{getBirthdayMonthLabel(staff)}
+                            </p>
+
+                            <p className="mt-1 truncate text-xs font-bold text-amber-600">
+                              抽成：{getCommissionTierLabel(staff.commission_tier)}
                             </p>
                           </div>
 
@@ -646,14 +689,38 @@ export default function XYAdminStaffPage() {
                   />
                 </Field>
 
+                <Field label="抽成檔位">
+                  <select
+                    value={form.commission_tier}
+                    onChange={(event) =>
+                      updateForm("commission_tier", event.target.value)
+                    }
+                  >
+                    <option value="auto">自動判定</option>
+                    <option value="rate_75">75%｜手動設定</option>
+                    <option value="rate_80">80%｜手動設定</option>
+                  </select>
+                </Field>
+
+                <Field label="抽成備註">
+                  <input
+                    value={form.commission_note}
+                    onChange={(event) =>
+                      updateForm("commission_note", event.target.value)
+                    }
+                    placeholder="例如：新人手動 75%、活動期間 80%"
+                  />
+                </Field>
+
                 <div className="md:col-span-2 rounded-2xl border border-orange-100 bg-orange-50/60 p-4">
                   <p className="text-sm font-black text-orange-700">
                     XY 抽成規則
                   </p>
 
                   <div className="mt-2 space-y-1 text-sm font-semibold text-slate-600">
-                    <p>基礎抽成固定 75%。</p>
+                    <p>自動判定：基礎抽成 75%。</p>
                     <p>當月接單金額滿 7000 後，基礎抽成變 80%。</p>
+                    <p>手動設定 75% 或 80% 時，會優先套用該員工檔位。</p>
                     <p>若單筆金額大於 4999，75% 的該筆變 80%，80% 的該筆變 82%。</p>
                     <p>當月累積薪水大於 5000，另得 250 元，每月一次。</p>
                     <p>生日月份當月另得 200 元生日禮金，每月一次。</p>
