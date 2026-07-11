@@ -102,8 +102,12 @@ export default function XYAdminPage() {
     return bonuses.reduce((sum, bonus) => sum + Number(bonus.amount || 0), 0);
   }, [bonuses]);
 
-  const unpaidOrders = orders.filter((order) => order.status !== "已發薪").length;
-  const unpaidBonuses = bonuses.filter((bonus) => bonus.status !== "已發薪").length;
+  const unpaidOrders = orders.filter(
+    (order) => order.status !== "已發薪"
+  ).length;
+  const unpaidBonuses = bonuses.filter(
+    (bonus) => bonus.status !== "已發薪"
+  ).length;
 
   useEffect(() => {
     boot();
@@ -249,7 +253,10 @@ export default function XYAdminPage() {
                 disabled={loading}
                 className="inline-flex items-center justify-center gap-2 rounded-full border border-orange-100 bg-white px-4 py-2 text-sm font-bold text-orange-600 hover:bg-orange-50 disabled:opacity-60"
               >
-                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                <RefreshCw
+                  size={16}
+                  className={loading ? "animate-spin" : ""}
+                />
                 重新整理
               </button>
 
@@ -269,7 +276,10 @@ export default function XYAdminPage() {
           <StatCard title="目前上線" value={`${onlineStaffCount} 人`} />
           <StatCard title="本月收入" value={money(monthIncome)} />
           <StatCard title="本月薪資" value={money(monthSalary + monthBonus)} />
-          <StatCard title="待發項目" value={`${unpaidOrders + unpaidBonuses} 筆`} />
+          <StatCard
+            title="待發項目"
+            value={`${unpaidOrders + unpaidBonuses} 筆`}
+          />
         </section>
 
         <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -310,7 +320,7 @@ export default function XYAdminPage() {
 
           <div className="mt-3 grid gap-3 text-sm font-semibold text-slate-600 md:grid-cols-2">
             <div className="rounded-2xl bg-orange-50/70 p-4">
-              基礎抽成 75%，當月接單金額滿 7000 後變 80%。
+              基礎抽成 75%，累積薪資滿 7000 後永久變 80%。
             </div>
 
             <div className="rounded-2xl bg-orange-50/70 p-4">

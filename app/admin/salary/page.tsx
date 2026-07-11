@@ -28,6 +28,8 @@ type Staff = {
   birthday_month?: number | null;
   commission_tier?: string | null;
   commission_note?: string | null;
+  commission_accumulated_salary?: number | null;
+  commission_80_unlocked?: boolean | null;
   is_active?: boolean | null;
 };
 
@@ -221,7 +223,9 @@ function getOrderAmount(order: SalaryOrder) {
 }
 
 function getOrderSourceDate(order: SalaryOrder) {
-  return order.order_finished_at || order.completed_at || order.created_at || null;
+  return (
+    order.order_finished_at || order.completed_at || order.created_at || null
+  );
 }
 
 function getBirthdayMonth(staff: Staff) {
@@ -316,7 +320,10 @@ export default function XYAdminSalaryPage() {
         return false;
       }
 
-      if (statusFilter !== "all" && (order.status || "未發薪") !== statusFilter) {
+      if (
+        statusFilter !== "all" &&
+        (order.status || "未發薪") !== statusFilter
+      ) {
         return false;
       }
 
@@ -389,7 +396,8 @@ export default function XYAdminSalaryPage() {
     return unpaidOrders + totalBonus;
   }, [filteredOrders, totalBonus]);
 
-  const platformIncome = totalIncome - totalSalary - totalOrderBonus - totalBonus;
+  const platformIncome =
+    totalIncome - totalSalary - totalOrderBonus - totalBonus;
 
   useEffect(() => {
     boot();
@@ -513,7 +521,10 @@ export default function XYAdminSalaryPage() {
     setLoading(false);
   }
 
-  function getStaffMonthOrderAmount(discordId: string, excludeOrderId?: string) {
+  function getStaffMonthOrderAmount(
+    discordId: string,
+    excludeOrderId?: string
+  ) {
     return orders
       .filter((order) => {
         if (order.discord_id !== discordId) return false;
@@ -533,10 +544,18 @@ export default function XYAdminSalaryPage() {
     let rate = manualBaseRate;
 
     if (!rate) {
-      const previousMonthAmount = getStaffMonthOrderAmount(discordId, excludeOrderId);
-      const monthAmountWithCurrentOrder = previousMonthAmount + orderAmount;
+      const accumulatedSalary = Number(
+        staff?.commission_accumulated_salary || 0
+      );
+      const projectedSalaryAt75 =
+        accumulatedSalary + Math.round(orderAmount * 0.75);
 
-      rate = monthAmountWithCurrentOrder >= 7000 ? 80 : 75;
+      rate =
+        staff?.commission_80_unlocked ||
+        accumulatedSalary >= 7000 ||
+        projectedSalaryAt75 >= 7000
+          ? 80
+          : 75;
     }
 
     if (orderAmount > 4999) {
@@ -580,7 +599,11 @@ export default function XYAdminSalaryPage() {
 
   function handleOrderStaffChange(discordId: string) {
     const staff = staffList.find((item) => item.discord_id === discordId);
-    const result = calculateRuleSalary(discordId, orderForm.order_amount, orderForm.id);
+    const result = calculateRuleSalary(
+      discordId,
+      orderForm.order_amount,
+      orderForm.id
+    );
 
     setOrderForm((prev) => ({
       ...prev,
@@ -592,7 +615,11 @@ export default function XYAdminSalaryPage() {
   }
 
   function handleOrderAmountChange(value: string) {
-    const result = calculateRuleSalary(orderForm.discord_id, value, orderForm.id);
+    const result = calculateRuleSalary(
+      orderForm.discord_id,
+      value,
+      orderForm.id
+    );
 
     setOrderForm((prev) => ({
       ...prev,
@@ -1025,20 +1052,18 @@ export default function XYAdminSalaryPage() {
                 href="/xy/admin"
                 className="inline-flex items-center gap-2 text-sm font-bold text-orange-600 hover:text-orange-700"
               >
-                <ArrowLeft size={16} />
-                回 XY 管理後台
+                <ArrowLeft size={16} />回 XY 管理後台
               </Link>
 
-              <p className="mt-4 text-sm font-bold text-orange-600">
-                XY Admin
-              </p>
+              <p className="mt-4 text-sm font-bold text-orange-600">XY Admin</p>
 
               <h1 className="mt-1 text-2xl font-black text-slate-900 md:text-3xl">
                 XY 薪資總表
               </h1>
 
               <p className="mt-2 text-sm text-slate-500">
-                固定 75%，當月接單滿 7000 變 80%，單筆大單會自動提高該筆抽成。
+                固定 75%，累積薪資滿 7000 後永久變
+                80%，單筆大單會自動提高該筆抽成。
               </p>
             </div>
 
@@ -1055,7 +1080,10 @@ export default function XYAdminSalaryPage() {
                 disabled={loading}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
               >
-                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                <RefreshCw
+                  size={16}
+                  className={loading ? "animate-spin" : ""}
+                />
                 重新整理
               </button>
             </div>
@@ -1079,7 +1107,8 @@ export default function XYAdminSalaryPage() {
               </h2>
 
               <p className="mt-1 text-sm text-slate-500">
-                當月累積薪水大於 5000 自動補 250；生日月份自動補 200，同月份同員工只會新增一次。
+                當月累積薪水大於 5000 自動補 250；生日月份自動補
+                200，同月份同員工只會新增一次。
               </p>
             </div>
 
@@ -1089,7 +1118,9 @@ export default function XYAdminSalaryPage() {
               className="inline-flex items-center justify-center gap-2 rounded-full bg-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-amber-200 hover:bg-amber-600 disabled:opacity-60"
             >
               <Sparkles size={16} />
-              {generatingBenefits ? "產生中..." : `產生 ${selectedMonth} 福利獎金`}
+              {generatingBenefits
+                ? "產生中..."
+                : `產生 ${selectedMonth} 福利獎金`}
             </button>
           </div>
         </section>
@@ -1122,7 +1153,9 @@ export default function XYAdminSalaryPage() {
               <Field label="員工">
                 <select
                   value={orderForm.discord_id}
-                  onChange={(event) => handleOrderStaffChange(event.target.value)}
+                  onChange={(event) =>
+                    handleOrderStaffChange(event.target.value)
+                  }
                 >
                   <option value="">請選擇員工</option>
                   {staffList.map((staff) => (
@@ -1168,7 +1201,9 @@ export default function XYAdminSalaryPage() {
                   type="number"
                   min="0"
                   value={orderForm.order_amount}
-                  onChange={(event) => handleOrderAmountChange(event.target.value)}
+                  onChange={(event) =>
+                    handleOrderAmountChange(event.target.value)
+                  }
                   placeholder="例如：1000"
                 />
               </Field>
@@ -1233,7 +1268,7 @@ export default function XYAdminSalaryPage() {
 
                 <div className="mt-2 space-y-1 text-sm font-semibold text-slate-600">
                   <p>基礎抽成：75%</p>
-                  <p>當月接單金額累積滿 7000：抽成 80%</p>
+                  <p>累積薪資滿 7000：永久解鎖抽成 80%</p>
                   <p>如果原本 75%，單筆金額大於 4999：該筆 80%</p>
                   <p>如果原本 80%，單筆金額大於 4999：該筆 82%</p>
                 </div>
@@ -1249,8 +1284,8 @@ export default function XYAdminSalaryPage() {
                   {savingOrder
                     ? "儲存中..."
                     : orderForm.id
-                      ? "更新訂單"
-                      : "新增訂單"}
+                    ? "更新訂單"
+                    : "新增訂單"}
                 </button>
               </div>
             </div>
@@ -1270,7 +1305,9 @@ export default function XYAdminSalaryPage() {
               <Field label="員工">
                 <select
                   value={bonusForm.discord_id}
-                  onChange={(event) => handleBonusStaffChange(event.target.value)}
+                  onChange={(event) =>
+                    handleBonusStaffChange(event.target.value)
+                  }
                 >
                   <option value="">請選擇員工</option>
                   {staffList.map((staff) => (
@@ -1566,13 +1603,7 @@ function StatCard({ title, value }: { title: string; value: string }) {
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-bold text-slate-600">

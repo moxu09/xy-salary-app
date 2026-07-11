@@ -34,6 +34,8 @@ type Staff = {
   can_take_order?: boolean | null;
   commission_tier?: string | null;
   commission_note?: string | null;
+  commission_accumulated_salary?: number | null;
+  commission_80_unlocked?: boolean | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -49,6 +51,7 @@ type StaffForm = {
   salary_channel_id: string;
   commission_tier: string;
   commission_note: string;
+  commission_accumulated_salary: string;
   is_active: boolean;
   is_online: boolean;
   can_take_order: boolean;
@@ -130,6 +133,9 @@ function makeForm(staff: Staff | null): StaffForm {
     salary_channel_id: staff?.salary_channel_id || "",
     commission_tier: staff?.commission_tier || "auto",
     commission_note: staff?.commission_note || "",
+    commission_accumulated_salary: String(
+      Number(staff?.commission_accumulated_salary || 0)
+    ),
     is_active: staff?.is_active !== false,
     is_online: Boolean(staff?.is_online),
     can_take_order: staff?.can_take_order !== false,
@@ -178,15 +184,21 @@ export default function XYAdminStaffPage() {
     }
 
     if (sortMode === "birthday_asc") {
-      list.sort((a, b) => (getBirthdayMonth(a) || 99) - (getBirthdayMonth(b) || 99));
+      list.sort(
+        (a, b) => (getBirthdayMonth(a) || 99) - (getBirthdayMonth(b) || 99)
+      );
     }
 
     if (sortMode === "birthday_desc") {
-      list.sort((a, b) => (getBirthdayMonth(b) || 0) - (getBirthdayMonth(a) || 0));
+      list.sort(
+        (a, b) => (getBirthdayMonth(b) || 0) - (getBirthdayMonth(a) || 0)
+      );
     }
 
     if (sortMode === "online_first") {
-      list.sort((a, b) => Number(Boolean(b.is_online)) - Number(Boolean(a.is_online)));
+      list.sort(
+        (a, b) => Number(Boolean(b.is_online)) - Number(Boolean(a.is_online))
+      );
     }
 
     if (sortMode === "active_first") {
@@ -214,7 +226,9 @@ export default function XYAdminStaffPage() {
     return list;
   }, [staffList, keyword, sortMode]);
 
-  const activeCount = staffList.filter((staff) => staff.is_active !== false).length;
+  const activeCount = staffList.filter(
+    (staff) => staff.is_active !== false
+  ).length;
   const onlineCount = staffList.filter((staff) => staff.is_online).length;
   const birthdayFilledCount = staffList.filter(
     (staff) => getBirthdayMonth(staff) !== null
@@ -333,6 +347,13 @@ export default function XYAdminStaffPage() {
 
     setSaving(true);
 
+    const accumulatedSalary = Number(form.commission_accumulated_salary || 0);
+    if (!Number.isFinite(accumulatedSalary) || accumulatedSalary < 0) {
+      alert("目前累積薪資必須是 0 以上的數字");
+      setSaving(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("xy_players")
       .update({
@@ -346,6 +367,10 @@ export default function XYAdminStaffPage() {
         salary_channel_id: form.salary_channel_id || null,
         commission_tier: form.commission_tier || "auto",
         commission_note: form.commission_note || null,
+        commission_accumulated_salary: accumulatedSalary,
+        commission_80_unlocked:
+          Boolean(selectedStaff.commission_80_unlocked) ||
+          accumulatedSalary >= 7000,
         is_active: form.is_active,
         is_online: form.is_online,
         can_take_order: form.can_take_order,
@@ -400,13 +425,10 @@ export default function XYAdminStaffPage() {
                 href="/xy/admin"
                 className="inline-flex items-center gap-2 text-sm font-bold text-orange-600 hover:text-orange-700"
               >
-                <ArrowLeft size={16} />
-                回 XY 管理後台
+                <ArrowLeft size={16} />回 XY 管理後台
               </Link>
 
-              <p className="mt-4 text-sm font-bold text-orange-600">
-                XY Admin
-              </p>
+              <p className="mt-4 text-sm font-bold text-orange-600">XY Admin</p>
 
               <h1 className="mt-1 text-2xl font-black text-slate-900 md:text-3xl">
                 XY 員工管理
@@ -430,7 +452,10 @@ export default function XYAdminStaffPage() {
                 disabled={loading}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
               >
-                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                <RefreshCw
+                  size={16}
+                  className={loading ? "animate-spin" : ""}
+                />
                 重新整理
               </button>
             </div>
@@ -534,7 +559,8 @@ export default function XYAdminStaffPage() {
                             </p>
 
                             <p className="mt-1 truncate text-xs font-bold text-amber-600">
-                              抽成：{getCommissionTierLabel(staff.commission_tier)}
+                              抽成：
+                              {getCommissionTierLabel(staff.commission_tier)}
                             </p>
                           </div>
 
@@ -620,7 +646,9 @@ export default function XYAdminStaffPage() {
                 <Field label="性別">
                   <select
                     value={form.gender}
-                    onChange={(event) => updateForm("gender", event.target.value)}
+                    onChange={(event) =>
+                      updateForm("gender", event.target.value)
+                    }
                   >
                     <option value="">未填寫</option>
                     <option value="男">男</option>
@@ -712,6 +740,34 @@ export default function XYAdminStaffPage() {
                   />
                 </Field>
 
+                <Field label="目前累積薪資">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={form.commission_accumulated_salary}
+                    onChange={(event) =>
+                      updateForm(
+                        "commission_accumulated_salary",
+                        event.target.value
+                      )
+                    }
+                    placeholder="例如：6500"
+                  />
+                </Field>
+
+                <Field label="80% 永久解鎖">
+                  <input
+                    value={
+                      selectedStaff.commission_80_unlocked ||
+                      Number(form.commission_accumulated_salary || 0) >= 7000
+                        ? "已永久解鎖"
+                        : "尚未達標"
+                    }
+                    readOnly
+                  />
+                </Field>
+
                 <div className="md:col-span-2 rounded-2xl border border-orange-100 bg-orange-50/60 p-4">
                   <p className="text-sm font-black text-orange-700">
                     XY 抽成規則
@@ -719,9 +775,11 @@ export default function XYAdminStaffPage() {
 
                   <div className="mt-2 space-y-1 text-sm font-semibold text-slate-600">
                     <p>自動判定：基礎抽成 75%。</p>
-                    <p>當月接單金額滿 7000 後，基礎抽成變 80%。</p>
+                    <p>累積薪資滿 7000 後，基礎抽成永久變為 80%。</p>
                     <p>手動設定 75% 或 80% 時，會優先套用該員工檔位。</p>
-                    <p>若單筆金額大於 4999，75% 的該筆變 80%，80% 的該筆變 82%。</p>
+                    <p>
+                      若單筆金額大於 4999，75% 的該筆變 80%，80% 的該筆變 82%。
+                    </p>
                     <p>當月累積薪水大於 5000，另得 250 元，每月一次。</p>
                     <p>生日月份當月另得 200 元生日禮金，每月一次。</p>
                   </div>
@@ -769,13 +827,7 @@ function StatCard({ title, value }: { title: string; value: string }) {
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-bold text-slate-600">

@@ -32,6 +32,8 @@ type Staff = {
   can_take_order?: boolean | null;
   commission_tier?: string | null;
   commission_note?: string | null;
+  commission_accumulated_salary?: number | null;
+  commission_80_unlocked?: boolean | null;
   created_at?: string | null;
 };
 
@@ -166,7 +168,9 @@ function getOrderCustomer(order: SalaryOrder) {
 }
 
 function getOrderSourceDate(order: SalaryOrder) {
-  return order.order_finished_at || order.completed_at || order.created_at || null;
+  return (
+    order.order_finished_at || order.completed_at || order.created_at || null
+  );
 }
 
 function getDisplayName(staff: Staff | null) {
@@ -295,9 +299,14 @@ export default function XYStaffPage() {
   }, [salaryOrders, monthBonus]);
 
   const manualBaseRate = getManualBaseRate(staff?.commission_tier);
-  const autoBaseRate = monthOrderAmount >= 7000 ? 80 : 75;
+  const accumulatedSalary = Number(staff?.commission_accumulated_salary || 0);
+  const autoBaseRate =
+    staff?.commission_80_unlocked || accumulatedSalary >= 7000 ? 80 : 75;
   const currentBaseRate = manualBaseRate || autoBaseRate;
-  const progress7000 = Math.min(100, Math.round((monthOrderAmount / 7000) * 100));
+  const progress7000 = Math.min(
+    100,
+    Math.round((accumulatedSalary / 7000) * 100)
+  );
   const progress5000Salary = Math.min(
     100,
     Math.round((monthSalary / 5000) * 100)
@@ -658,13 +667,13 @@ export default function XYStaffPage() {
                   </p>
 
                   <p className="pb-1 text-sm font-semibold text-slate-500">
-                    {manualBaseRate ? "後台手動設定" : "目前本月基礎抽成"}
+                    {manualBaseRate ? "後台手動設定" : "永久累積基礎抽成"}
                   </p>
                 </div>
 
                 <div className="mt-3 space-y-1 text-sm leading-6 text-slate-500">
                   <p>自動判定：基礎抽成 75%</p>
-                  <p>自動判定本月接單金額滿 7000 後：基礎抽成 80%</p>
+                  <p>自動判定累積薪資滿 7000 後：永久解鎖基礎抽成 80%</p>
                   <p>後台手動設定 75% 或 80% 時，會優先套用該檔位。</p>
                   <p>若該筆訂單金額大於 4999：75% 會變 80%，80% 會變 82%</p>
                   {staff?.commission_note ? (
@@ -675,8 +684,8 @@ export default function XYStaffPage() {
 
               <div className="mt-5 space-y-4">
                 <ProgressBar
-                  title="本月 7000 接單金額進度"
-                  current={monthOrderAmount}
+                  title="累積薪資 7000 永久解鎖進度"
+                  current={accumulatedSalary}
                   target={7000}
                   percent={progress7000}
                 />
@@ -703,7 +712,9 @@ export default function XYStaffPage() {
                   status={
                     monthSalary > 5000
                       ? salaryBenefitText
-                      : `尚未達標，還差 ${money(Math.max(5000 - monthSalary, 0))}`
+                      : `尚未達標，還差 ${money(
+                          Math.max(5000 - monthSalary, 0)
+                        )}`
                   }
                 />
 
@@ -751,8 +762,8 @@ export default function XYStaffPage() {
                 {onlineSaving
                   ? "更新中..."
                   : staff.is_online
-                    ? "切換為下線"
-                    : "切換為上線"}
+                  ? "切換為下線"
+                  : "切換為上線"}
               </button>
             </div>
 
