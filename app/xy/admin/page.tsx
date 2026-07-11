@@ -320,7 +320,7 @@ export default function XYAdminPage() {
 
           <div className="mt-3 grid gap-3 text-sm font-semibold text-slate-600 md:grid-cols-2">
             <div className="rounded-2xl bg-orange-50/70 p-4">
-              基礎抽成 75%，累積薪資滿 7000 後永久變 80%。
+              基礎抽成 75%，累積薪資滿 5000 後永久變 80%。
             </div>
 
             <div className="rounded-2xl bg-orange-50/70 p-4">

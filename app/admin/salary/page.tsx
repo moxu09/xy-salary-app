@@ -552,8 +552,8 @@ export default function XYAdminSalaryPage() {
 
       rate =
         staff?.commission_80_unlocked ||
-        accumulatedSalary >= 7000 ||
-        projectedSalaryAt75 >= 7000
+        accumulatedSalary >= 5000 ||
+        projectedSalaryAt75 >= 5000
           ? 80
           : 75;
     }
@@ -1062,7 +1062,7 @@ export default function XYAdminSalaryPage() {
               </h1>
 
               <p className="mt-2 text-sm text-slate-500">
-                固定 75%，累積薪資滿 7000 後永久變
+                固定 75%，累積薪資滿 5000 後永久變
                 80%，單筆大單會自動提高該筆抽成。
               </p>
             </div>
@@ -1268,7 +1268,7 @@ export default function XYAdminSalaryPage() {
 
                 <div className="mt-2 space-y-1 text-sm font-semibold text-slate-600">
                   <p>基礎抽成：75%</p>
-                  <p>累積薪資滿 7000：永久解鎖抽成 80%</p>
+                  <p>累積薪資滿 5000：永久解鎖抽成 80%</p>
                   <p>如果原本 75%，單筆金額大於 4999：該筆 80%</p>
                   <p>如果原本 80%，單筆金額大於 4999：該筆 82%</p>
                 </div>

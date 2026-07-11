@@ -301,11 +301,11 @@ export default function XYStaffPage() {
   const manualBaseRate = getManualBaseRate(staff?.commission_tier);
   const accumulatedSalary = Number(staff?.commission_accumulated_salary || 0);
   const autoBaseRate =
-    staff?.commission_80_unlocked || accumulatedSalary >= 7000 ? 80 : 75;
+    staff?.commission_80_unlocked || accumulatedSalary >= 5000 ? 80 : 75;
   const currentBaseRate = manualBaseRate || autoBaseRate;
-  const progress7000 = Math.min(
+  const progress5000 = Math.min(
     100,
-    Math.round((accumulatedSalary / 7000) * 100)
+    Math.round((accumulatedSalary / 5000) * 100)
   );
   const progress5000Salary = Math.min(
     100,
@@ -673,7 +673,7 @@ export default function XYStaffPage() {
 
                 <div className="mt-3 space-y-1 text-sm leading-6 text-slate-500">
                   <p>自動判定：基礎抽成 75%</p>
-                  <p>自動判定累積薪資滿 7000 後：永久解鎖基礎抽成 80%</p>
+                  <p>自動判定累積薪資滿 5000 後：永久解鎖基礎抽成 80%</p>
                   <p>後台手動設定 75% 或 80% 時，會優先套用該檔位。</p>
                   <p>若該筆訂單金額大於 4999：75% 會變 80%，80% 會變 82%</p>
                   {staff?.commission_note ? (
@@ -684,10 +684,10 @@ export default function XYStaffPage() {
 
               <div className="mt-5 space-y-4">
                 <ProgressBar
-                  title="累積薪資 7000 永久解鎖進度"
+                  title="累積薪資 5000 永久解鎖進度"
                   current={accumulatedSalary}
-                  target={7000}
-                  percent={progress7000}
+                  target={5000}
+                  percent={progress5000}
                 />
 
                 <ProgressBar

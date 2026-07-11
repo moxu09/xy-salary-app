@@ -11,6 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import ActivityCommissionPanel from "@/components/ActivityCommissionPanel";
 
 type SalarySettings = {
   id: string;
@@ -234,9 +235,7 @@ export default function AdminSettingsPage() {
                 回管理後台
               </Link>
 
-              <p className="mt-4 text-sm font-bold text-orange-600">
-                XY Admin
-              </p>
+              <p className="mt-4 text-sm font-bold text-orange-600">XY Admin</p>
 
               <h1 className="mt-1 text-2xl font-black text-slate-900 md:text-3xl">
                 系統設定
@@ -365,6 +364,8 @@ export default function AdminSettingsPage() {
             </Field>
           </div>
         </section>
+
+        <ActivityCommissionPanel appKey="xy" accent="orange" />
       </div>
     </main>
   );

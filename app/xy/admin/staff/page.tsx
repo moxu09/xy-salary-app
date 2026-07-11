@@ -370,7 +370,7 @@ export default function XYAdminStaffPage() {
         commission_accumulated_salary: accumulatedSalary,
         commission_80_unlocked:
           Boolean(selectedStaff.commission_80_unlocked) ||
-          accumulatedSalary >= 7000,
+          accumulatedSalary >= 5000,
         is_active: form.is_active,
         is_online: form.is_online,
         can_take_order: form.can_take_order,
@@ -760,7 +760,7 @@ export default function XYAdminStaffPage() {
                   <input
                     value={
                       selectedStaff.commission_80_unlocked ||
-                      Number(form.commission_accumulated_salary || 0) >= 7000
+                      Number(form.commission_accumulated_salary || 0) >= 5000
                         ? "已永久解鎖"
                         : "尚未達標"
                     }
@@ -775,7 +775,7 @@ export default function XYAdminStaffPage() {
 
                   <div className="mt-2 space-y-1 text-sm font-semibold text-slate-600">
                     <p>自動判定：基礎抽成 75%。</p>
-                    <p>累積薪資滿 7000 後，基礎抽成永久變為 80%。</p>
+                    <p>累積薪資滿 5000 後，基礎抽成永久變為 80%。</p>
                     <p>手動設定 75% 或 80% 時，會優先套用該員工檔位。</p>
                     <p>
                       若單筆金額大於 4999，75% 的該筆變 80%，80% 的該筆變 82%。

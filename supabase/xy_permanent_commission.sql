@@ -45,7 +45,7 @@ begin
           commission_accumulated_salary + v_new_amount
         ),
         commission_80_unlocked = commission_80_unlocked or
-          greatest(0, commission_accumulated_salary + v_new_amount) >= 7000,
+          greatest(0, commission_accumulated_salary + v_new_amount) >= 5000,
         updated_at = now()
     where discord_id = new.discord_id;
   end if;
