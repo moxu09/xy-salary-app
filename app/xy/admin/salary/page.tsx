@@ -682,12 +682,14 @@ export default function XYAdminSalaryPage() {
   }
 
   function resetOrderForm() {
-    const firstStaff = staffList[0];
+    const selectedStaff =
+      staffList.find((staff) => staff.discord_id === orderForm.discord_id) ||
+      staffList[0];
 
     setOrderForm({
       ...makeEmptyOrderForm(),
-      discord_id: firstStaff?.discord_id || "",
-      staff_name: firstStaff ? getDisplayName(firstStaff) : "",
+      discord_id: selectedStaff?.discord_id || "",
+      staff_name: selectedStaff ? getDisplayName(selectedStaff) : "",
     });
   }
 
