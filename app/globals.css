@@ -94,9 +94,11 @@
 }
 
 .admin-sidebar {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 16rem;
   height: 100dvh;
+  max-height: 100dvh;
   overflow-y: auto;
   border-radius: 0 !important;
   box-shadow: 8px 0 28px rgba(15, 35, 53, 0.1);
@@ -118,6 +120,7 @@
 }
 
 .admin-content {
+  margin-left: 16rem;
   width: calc(100% - 16rem);
   overflow-x: clip;
 }
@@ -183,6 +186,7 @@
     overflow-x: auto !important;
   }
   .admin-content { width: 100%; }
+  .admin-content { margin-left: 0; }
 }
 
 @media (max-width: 640px) {
