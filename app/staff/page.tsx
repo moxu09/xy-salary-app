@@ -769,8 +769,8 @@ export default function StaffPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#fff7ed] px-5 py-6 text-slate-900">
-      <div className="mx-auto max-w-7xl space-y-5">
+    <main className="staff-page min-h-screen bg-[#fff7ed] px-5 py-6 text-slate-900">
+      <div className="staff-shell mx-auto max-w-7xl space-y-5">
         <header className="rounded-[30px] border border-orange-100 bg-white px-6 py-5 shadow-sm shadow-orange-100">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-4">

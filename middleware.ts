@@ -26,6 +26,18 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // 對外網址統一使用沒有 /xy 前綴的路徑，避免同一功能同時載入
+  // 新、舊兩套版型。登入完成後若仍帶有舊前綴，直接導回新版頁面。
+  if (pathname === "/xy/staff") {
+    url.pathname = "/staff";
+    return NextResponse.redirect(url);
+  }
+
+  if (pathname === "/xy/admin" || pathname.startsWith("/xy/admin/")) {
+    url.pathname = pathname.slice(3) || "/admin";
+    return NextResponse.redirect(url);
+  }
+
   if (pathname.startsWith("/xy")) {
     return NextResponse.next();
   }
@@ -41,8 +53,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (pathname === "/staff") {
-    url.pathname = "/xy/staff";
-    return NextResponse.rewrite(url);
+    return NextResponse.next();
   }
 
   if (pathname === "/admin-login") {
@@ -51,48 +62,39 @@ export function middleware(request: NextRequest) {
   }
 
   if (pathname === "/admin") {
-    url.pathname = "/xy/admin";
-    return NextResponse.rewrite(url);
+    return NextResponse.next();
   }
 
   if (pathname === "/admin/staff") {
-    url.pathname = "/xy/admin/staff";
-    return NextResponse.rewrite(url);
+    return NextResponse.next();
   }
 
   if (pathname === "/admin/salary") {
-    url.pathname = "/xy/admin/salary";
-    return NextResponse.rewrite(url);
+    return NextResponse.next();
   }
 
   if (pathname === "/admin/payroll") {
-    url.pathname = "/xy/admin/payroll";
-    return NextResponse.rewrite(url);
+    return NextResponse.next();
   }
 
   if (pathname === "/admin/orders") {
-    url.pathname = "/xy/admin/orders";
-    return NextResponse.rewrite(url);
+    return NextResponse.next();
   }
 
   if (pathname === "/admin/salary-rank") {
-    url.pathname = "/xy/admin/salary-rank";
-    return NextResponse.rewrite(url);
+    return NextResponse.next();
   }
 
   if (pathname === "/admin/approvals") {
-    url.pathname = "/xy/admin/approvals";
-    return NextResponse.rewrite(url);
+    return NextResponse.next();
   }
 
   if (pathname === "/admin/accounting") {
-    url.pathname = "/xy/admin/accounting";
-    return NextResponse.rewrite(url);
+    return NextResponse.next();
   }
 
   if (pathname === "/admin/settings") {
-    url.pathname = "/xy/admin/settings";
-    return NextResponse.rewrite(url);
+    return NextResponse.next();
   }
 
   return NextResponse.next();
