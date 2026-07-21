@@ -190,7 +190,70 @@
 }
 
 @media (max-width: 640px) {
-  .staff-side-nav { display: block; }
+  .staff-side-nav {
+    display: flex;
+    max-width: 100vw;
+    gap: .4rem;
+    overflow-x: auto;
+    padding: .65rem;
+    overscroll-behavior-inline: contain;
+  }
+
+  .staff-side-nav > div:first-child {
+    display: none;
+  }
+
+  .staff-side-nav > div {
+    display: flex;
+    min-width: max-content;
+    gap: .35rem;
+  }
+
+  .staff-side-nav button {
+    width: auto !important;
+    min-width: max-content;
+    padding: .7rem .8rem !important;
+    white-space: nowrap;
+  }
+
+  .staff-page,
+  .admin-content {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .staff-shell,
+  .admin-content > div:last-child {
+    min-width: 0;
+    padding: .65rem !important;
+  }
+
+  .staff-page section,
+  .staff-page article,
+  .admin-content section,
+  .admin-content article {
+    min-width: 0;
+    max-width: 100%;
+    border-radius: 18px !important;
+  }
+
+  .staff-page input,
+  .staff-page select,
+  .staff-page textarea,
+  .admin-content input,
+  .admin-content select,
+  .admin-content textarea {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .staff-page .overflow-x-auto,
+  .admin-content .overflow-x-auto {
+    max-width: calc(100vw - 20px);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 
   .mobile-table-card table {
     min-width: 0;
@@ -891,5 +954,38 @@ tbody tr:hover {
     color: #2679ac;
     font-weight: 900;
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 640px) {
+  main.staff-page {
+    width: 100% !important;
+    max-width: 100vw !important;
+    padding: 0 !important;
+  }
+
+  .staff-side-nav {
+    display: flex !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    gap: .4rem !important;
+    overflow-x: auto !important;
+    padding: .65rem !important;
+  }
+
+  .staff-side-nav > div:first-child {
+    display: none !important;
+  }
+
+  .staff-side-nav > div {
+    display: flex !important;
+    min-width: max-content !important;
+    gap: .35rem !important;
+  }
+
+  .staff-side-nav button {
+    width: auto !important;
+    min-width: max-content !important;
+    padding: .7rem .8rem !important;
   }
 }
