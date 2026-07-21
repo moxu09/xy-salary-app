@@ -1327,7 +1327,7 @@ function AdminServiceApplication({ staff }: { staff: Staff }) {
       <p className="mt-1 text-sm text-slate-500">填寫後送出，管理員將依簽核流程處理。</p>
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         <Field label="申請日期（固定當日）"><input type="date" value={new Date().toISOString().slice(0, 10)} readOnly /></Field>
-        <Field label="部門"><select defaultValue="XY陪玩"><option>深夜不關燈</option><option>秋奈電競陪玩</option><option>XY陪玩</option></select></Field>
+        <Field label="部門"><input value="XY陪玩" readOnly aria-readonly="true" /></Field>
         <Field label="員工暱稱"><input defaultValue={getDisplayName(staff)} readOnly /></Field>
         <Field label="緊急程度"><select defaultValue="一般"><option>一般</option><option>急件</option></select></Field>
         <Field label="需求日期"><input type="date" /></Field>
