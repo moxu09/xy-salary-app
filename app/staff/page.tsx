@@ -13,6 +13,11 @@ import {
   Power,
   Gift,
   Trophy,
+  ChevronDown,
+  ClipboardList,
+  FileCheck2,
+  BriefcaseBusiness,
+  CircleDollarSign,
 } from "lucide-react";
 
 const XY_GUILD_ID =
@@ -359,6 +364,8 @@ export default function StaffPage() {
   const [onlineSaving, setOnlineSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthInput());
+  const [activePanel, setActivePanel] = useState("profile");
+  const [expandedGroup, setExpandedGroup] = useState<string | null>("人事");
 
   const [profileForm, setProfileForm] = useState<ProfileForm>({
     display_name: "",
@@ -819,6 +826,70 @@ export default function StaffPage() {
           </div>
         </header>
 
+        <aside className="staff-side-nav" aria-label="員工薪資中心導覽">
+          <div className="mb-4 border-b border-orange-100 pb-4">
+            <p className="text-xs font-bold tracking-[0.18em] text-orange-500">STAFF PORTAL</p>
+            <p className="mt-1 text-lg font-black text-slate-900">員工薪資中心</p>
+          </div>
+          {([
+            {
+              group: "人事",
+              icon: BriefcaseBusiness,
+              items: [
+                ["profile", "個人資料"],
+                ["admin-service", "行政服務申請"],
+                ["benefits", "福利申請"],
+              ],
+            },
+            {
+              group: "訂單",
+              icon: CircleDollarSign,
+              items: [
+                ["orders", "訂單明細"],
+                ["tips", "打賞明細"],
+                ["bonus", "獎金明細"],
+                ["deductions", "薪資扣項"],
+              ],
+            },
+            {
+              group: "簽核",
+              icon: FileCheck2,
+              items: [
+                ["admin-approval", "行政服務簽核"],
+                ["reimburse-approval", "報銷簽核"],
+                ["benefit-approval", "福利簽核"],
+                ["leave-approval", "請假單簽核"],
+                ["suspend-approval", "留職停薪簽核"],
+              ],
+            },
+          ] as const).map(({ group, icon: GroupIcon, items }) => (
+            <div key={group} className="mb-2">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm font-black text-slate-700 hover:bg-orange-50"
+                onClick={() => setExpandedGroup((value) => (value === group ? null : group))}
+              >
+                <span className="flex items-center gap-2"><GroupIcon size={16} className="text-orange-500" />{group}</span>
+                <ChevronDown size={15} className={`transition-transform ${expandedGroup === group ? "rotate-180" : ""}`} />
+              </button>
+              {expandedGroup === group && (
+                <div className="mt-1 space-y-1 pl-2">
+                  {items.map(([id, label]) => (
+                    <button
+                      type="button"
+                      key={id}
+                      onClick={() => setActivePanel(id)}
+                      className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${activePanel === id ? "bg-orange-500 text-white shadow-sm" : "text-slate-500 hover:bg-orange-50 hover:text-orange-700"}`}
+                    >
+                      <ClipboardList size={14} />{label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </aside>
+
         <section className="grid gap-4 md:grid-cols-4">
           <StatCard title="月份訂單" value={`${monthOrderCount} 筆`} />
           <StatCard title="月份薪資" value={money(monthSalary)} />
@@ -850,7 +921,11 @@ export default function StaffPage() {
           </div>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[0.9fr_1.4fr]">
+        {activePanel === "admin-service" && <AdminServiceApplication staff={staff} />}
+        {activePanel === "benefits" && <BenefitApplication staff={staff} monthSalary={monthSalary} />}
+        {activePanel.endsWith("-approval") && <ApprovalPanel month={selectedMonth} kind={activePanel} />}
+
+        <section className={`grid gap-5 xl:grid-cols-[0.9fr_1.4fr] ${["admin-service", "benefits", "admin-approval", "reimburse-approval", "benefit-approval", "leave-approval", "suspend-approval"].includes(activePanel) ? "hidden" : ""}`}>
           <div className="space-y-5">
             <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
               <div className="flex items-start justify-between gap-4">
@@ -1241,6 +1316,52 @@ export default function StaffPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+function AdminServiceApplication({ staff }: { staff: Staff }) {
+  const categories = ["查掛津貼", "代支報銷", "離職申請書", "留職停薪申請書", "逾期補登單申請書", "證照津貼申請書", "過失報告書", "懲處決議書"];
+  return (
+    <section className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+      <h2 className="text-xl font-black text-slate-900">行政服務申請</h2>
+      <p className="mt-1 text-sm text-slate-500">填寫後送出，管理員將依簽核流程處理。</p>
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <Field label="申請日期（固定當日）"><input type="date" value={new Date().toISOString().slice(0, 10)} readOnly /></Field>
+        <Field label="部門"><select defaultValue="XY陪玩"><option>深夜不關燈</option><option>秋奈電競陪玩</option><option>XY陪玩</option></select></Field>
+        <Field label="員工暱稱"><input defaultValue={getDisplayName(staff)} readOnly /></Field>
+        <Field label="緊急程度"><select defaultValue="一般"><option>一般</option><option>急件</option></select></Field>
+        <Field label="需求日期"><input type="date" /></Field>
+        <Field label="需求分類"><select defaultValue="查掛津貼">{categories.map((item) => <option key={item}>{item}</option>)}</select></Field>
+      </div>
+      <Field label="需求內容"><textarea className="mt-4 min-h-40 w-full rounded-2xl border border-orange-100 p-3" placeholder="請直接填寫需求內容，或依下方申請書欄位填寫。" /></Field>
+      <button type="button" className="mt-4 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white hover:bg-orange-600">送出申請</button>
+    </section>
+  );
+}
+
+function BenefitApplication({ staff, monthSalary }: { staff: Staff; monthSalary: number }) {
+  const eligible = monthSalary > 5000;
+  return (
+    <section className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+      <h2 className="text-xl font-black text-slate-900">福利申請</h2>
+      <p className="mt-1 text-sm text-slate-500">前一個月薪資需超過 $5,000 才可申請福利。</p>
+      {!eligible && <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">目前資格未達成，前一個月薪資為 {money(monthSalary)}。</p>}
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <Field label="員工暱稱"><input defaultValue={getDisplayName(staff)} readOnly /></Field>
+        <Field label="福利項目"><select disabled={!eligible} defaultValue="生日禮金"><option>生日禮金</option><option>開工紅包</option><option>肉粽補助</option><option>月餅補助</option><option>聖誕補助</option></select></Field>
+      </div>
+      <button type="button" disabled={!eligible} className="mt-4 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">送出福利申請</button>
+    </section>
+  );
+}
+
+function ApprovalPanel({ month, kind }: { month: string; kind: string }) {
+  const labels: Record<string, string> = { "admin-approval": "行政服務簽核", "reimburse-approval": "報銷簽核", "benefit-approval": "福利簽核", "leave-approval": "請假單簽核", "suspend-approval": "留職停薪簽核" };
+  return (
+    <section className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+      <div className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-xl font-black text-slate-900">{labels[kind] || "簽核"}</h2><p className="mt-1 text-sm text-slate-500">依照所選月份檢視申請日期、申請項目與簽核結果。</p></div><label className="text-sm font-bold text-slate-600">月份<input className="mt-1 block rounded-xl border border-orange-100 px-3 py-2" type="month" defaultValue={month} /></label></div>
+      <div className="mt-6 rounded-2xl border border-dashed border-orange-200 px-5 py-10 text-center text-sm text-slate-400">目前沒有符合月份的簽核申請</div>
+    </section>
   );
 }
 

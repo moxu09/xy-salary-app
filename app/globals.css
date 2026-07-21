@@ -37,6 +37,39 @@
   --dn-shadow: 0 8px 22px rgba(43, 102, 143, 0.08);
 }
 
+.staff-side-nav {
+  position: fixed;
+  right: 1.25rem;
+  top: 7rem;
+  z-index: 20;
+  width: 220px;
+  max-height: calc(100vh - 8.5rem);
+  overflow-y: auto;
+  border: 1px solid #ffedd5;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 1rem;
+  box-shadow: 0 12px 36px rgba(194, 65, 12, 0.12);
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 1279px) {
+  .staff-side-nav {
+    position: static;
+    width: 100%;
+    max-height: none;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .5rem;
+  }
+  .staff-side-nav > div:first-child { display: none; }
+  .staff-side-nav > div { margin-bottom: 0; }
+}
+
+@media (max-width: 640px) {
+  .staff-side-nav { display: block; }
+}
+
 /* =========================================================
    基礎設定
    ========================================================= */

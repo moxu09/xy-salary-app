@@ -70,6 +70,31 @@ export function middleware(request: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
+  if (pathname === "/admin/orders") {
+    url.pathname = "/xy/admin/orders";
+    return NextResponse.rewrite(url);
+  }
+
+  if (pathname === "/admin/salary-rank") {
+    url.pathname = "/xy/admin/salary-rank";
+    return NextResponse.rewrite(url);
+  }
+
+  if (pathname === "/admin/approvals") {
+    url.pathname = "/xy/admin/approvals";
+    return NextResponse.rewrite(url);
+  }
+
+  if (pathname === "/admin/accounting") {
+    url.pathname = "/xy/admin/accounting";
+    return NextResponse.rewrite(url);
+  }
+
+  if (pathname === "/admin/settings") {
+    url.pathname = "/xy/admin/settings";
+    return NextResponse.rewrite(url);
+  }
+
   return NextResponse.next();
 }
 
