@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { Session } from "@supabase/supabase-js";
 import {
   ArrowLeft,
   BellRing,
@@ -12,6 +14,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import ActivityCommissionPanel from "@/components/ActivityCommissionPanel";
+import AnnouncementManager from "@/components/AnnouncementManager";
 
 type SalarySettings = {
   id: string;
@@ -22,7 +25,7 @@ type SalarySettings = {
   updated_at?: string | null;
 };
 
-function getDiscordIdFromSession(session: any) {
+function getDiscordIdFromSession(session: Session | null) {
   const user = session?.user;
   const metadata = user?.user_metadata || {};
 
@@ -54,6 +57,7 @@ function formatDateTime(value?: string | null) {
 }
 
 export default function AdminSettingsPage() {
+  const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -66,10 +70,6 @@ export default function AdminSettingsPage() {
     payday_note: "",
   });
 
-  useEffect(() => {
-    boot();
-  }, []);
-
   async function boot() {
     setChecking(true);
 
@@ -78,7 +78,7 @@ export default function AdminSettingsPage() {
       const session = data.session;
 
       if (!session) {
-        window.location.href = "/admin-login";
+        router.replace("/admin-login");
         return;
       }
 
@@ -87,7 +87,7 @@ export default function AdminSettingsPage() {
       if (!discordId) {
         alert("無法取得 Discord ID，請重新登入。");
         await supabase.auth.signOut();
-        window.location.href = "/admin-login";
+        router.replace("/admin-login");
         return;
       }
 
@@ -101,13 +101,13 @@ export default function AdminSettingsPage() {
       if (error) {
         console.error("check admin error:", error);
         alert("檢查後台權限失敗");
-        window.location.href = "/staff";
+        router.replace("/staff");
         return;
       }
 
       if (!admin) {
         alert("你沒有後台管理權限");
-        window.location.href = "/staff";
+        router.replace("/staff");
         return;
       }
 
@@ -115,7 +115,7 @@ export default function AdminSettingsPage() {
     } catch (error) {
       console.error("admin settings boot error:", error);
       alert("檢查後台權限失敗");
-      window.location.href = "/staff";
+      router.replace("/staff");
     } finally {
       setChecking(false);
     }
@@ -164,6 +164,11 @@ export default function AdminSettingsPage() {
 
     setSettings(data as SalarySettings);
   }
+
+  const bootEvent = useEffectEvent(boot);
+  useEffect(() => {
+    void Promise.resolve().then(bootEvent);
+  }, []);
 
   function updateField<K extends keyof SalarySettings>(
     key: K,
@@ -365,6 +370,7 @@ export default function AdminSettingsPage() {
           </div>
         </section>
 
+        <AnnouncementManager apiPath="/api/xy/announcements" accent="orange" />
         <ActivityCommissionPanel appKey="xy" accent="orange" />
       </div>
     </main>

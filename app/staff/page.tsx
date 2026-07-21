@@ -18,6 +18,7 @@ import {
   FileCheck2,
   BriefcaseBusiness,
   CircleDollarSign,
+  Megaphone,
 } from "lucide-react";
 
 const XY_GUILD_ID =
@@ -925,6 +926,8 @@ export default function StaffPage() {
         {activePanel === "benefits" && <BenefitApplication staff={staff} monthSalary={monthSalary} />}
         {activePanel.endsWith("-approval") && <ApprovalPanel month={selectedMonth} kind={activePanel} />}
 
+        {activePanel === "profile" && <EmployeeAnnouncements />}
+
         <section className={`grid gap-5 xl:grid-cols-[0.9fr_1.4fr] ${["admin-service", "benefits", "admin-approval", "reimburse-approval", "benefit-approval", "leave-approval", "suspend-approval"].includes(activePanel) ? "hidden" : ""}`}>
           <div className="space-y-5">
             <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
@@ -1317,6 +1320,29 @@ export default function StaffPage() {
       </div>
     </main>
   );
+}
+
+function EmployeeAnnouncements() {
+  const [items, setItems] = useState<Array<{ id: string; title: string; content: string; created_at: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      const { data } = await supabase.auth.getSession();
+      const response = await fetch("/api/xy/announcements", { headers: { Authorization: `Bearer ${data.session?.access_token || ""}` }, cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (active && response.ok) setItems(payload.announcements || []);
+      if (active) setLoading(false);
+    }
+    void load();
+    return () => { active = false; };
+  }, []);
+
+  return <section className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+    <h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><Megaphone size={20} className="text-orange-500" />公告事項</h2>
+    <div className="mt-4 space-y-3">{loading ? <p className="rounded-2xl bg-orange-50 p-5 text-center text-sm text-slate-400">讀取公告中…</p> : items.length ? items.map((item) => <article key={item.id} className="min-w-0 rounded-2xl bg-orange-50 p-4"><p className="break-words font-black text-orange-900">{item.title}</p><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">{item.content}</p><p className="mt-2 text-xs text-slate-400">{new Date(item.created_at).toLocaleString("zh-TW")}</p></article>) : <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-400">目前沒有公告</p>}</div>
+  </section>;
 }
 
 function AdminServiceApplication({ staff }: { staff: Staff }) {
