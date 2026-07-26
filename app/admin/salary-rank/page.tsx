@@ -147,9 +147,13 @@ function isDateInRange(sourceDate: string | null, startIso: string, endIso: stri
 function getCommissionTierLabel(value?: string | null) {
   if (value === "rate_75") return "75%";
   if (value === "rate_80") return "80%";
-  if (value === "rate_85") return "85%";
-  if (value === "rate_90") return "90%";
-  if (value === "manager_95") return "95% 主管";
+  if (
+    value === "rate_85" ||
+    value === "rate_90" ||
+    value === "manager_95"
+  ) {
+    return "自動（舊檔位已停用）";
+  }
   return "自動";
 }
 

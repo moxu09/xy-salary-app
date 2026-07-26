@@ -21,13 +21,6 @@ import {
   Megaphone,
 } from "lucide-react";
 
-const XY_GUILD_ID =
-  process.env.NEXT_PUBLIC_XY_GUILD_ID ||
-  process.env.NEXT_PUBLIC_GUILD_ID ||
-  "1501098191813214312";
-
-const XY_PLAY_ORDER_FILTER = `guild_id.eq.${XY_GUILD_ID},guild_id.is.null`;
-
 type Staff = {
   id?: string;
   discord_id: string;
@@ -45,6 +38,8 @@ type Staff = {
   allowed_services?: string[] | null;
   commission_tier?: string | null;
   commission_note?: string | null;
+  commission_accumulated_salary?: number | null;
+  commission_80_unlocked?: boolean | null;
   created_at?: string | null;
 };
 
@@ -212,92 +207,24 @@ function getOrderCustomer(order: SalaryOrder) {
   return order.customer_name || order.customer_id || "-";
 }
 
-function getManualRate(tier?: string | null) {
+function getManualBaseRate(tier?: string | null) {
+  if (tier === "rate_75") return 75;
   if (tier === "rate_80") return 80;
-  if (tier === "rate_85") return 85;
-  if (tier === "rate_90") return 90;
-  if (tier === "manager_95") return 95;
   return null;
 }
 
-function getTaipeiMonthText(date = new Date()) {
-  const taipeiDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-  return taipeiDate.toISOString().slice(0, 7);
-}
+function getCurrentBaseRate(staff: Staff | null) {
+  const manualBaseRate = getManualBaseRate(staff?.commission_tier);
 
-function getNextMonthTextFromIso(isoText?: string | null) {
-  if (!isoText) return "";
+  if (manualBaseRate) return manualBaseRate;
 
-  const date = new Date(isoText);
-  const taipeiDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  const accumulatedSalary = Number(
+    staff?.commission_accumulated_salary || 0
+  );
 
-  const year = taipeiDate.getUTCFullYear();
-  const month = taipeiDate.getUTCMonth();
-
-  const next = new Date(Date.UTC(year, month + 1, 1));
-  return next.toISOString().slice(0, 7);
-}
-
-function getOrderSourceDate(order: SalaryOrder) {
-  return order.order_finished_at || order.completed_at || order.created_at || null;
-}
-
-function getFirstReachAmountDate(orderList: SalaryOrder[], targetAmount: number) {
-  const sortedOrders = [...orderList]
-    .filter((order) => getOrderSourceDate(order))
-    .sort((a, b) => {
-      const aDate = getOrderSourceDate(a);
-      const bDate = getOrderSourceDate(b);
-
-      return new Date(aDate || 0).getTime() - new Date(bDate || 0).getTime();
-    });
-
-  let total = 0;
-
-  for (const order of sortedOrders) {
-    total += getOrderAmount(order);
-
-    if (total >= targetAmount) {
-      return getOrderSourceDate(order);
-    }
-  }
-
-  return null;
-}
-
-function getCurrentRateByRule(
-  staff: Staff | null,
-  orderList: SalaryOrder[],
-  totalYearSalary: number
-) {
-  const now = new Date();
-  const openingEnd = new Date("2026-09-01T00:00:00+08:00");
-  const manual = getManualRate(staff?.commission_tier);
-
-  if (manual) {
-    return manual;
-  }
-
-  if (now < openingEnd) {
-    return 90;
-  }
-
-  if (totalYearSalary >= 100000) {
-    return 90;
-  }
-
-  const firstReach10kDate = getFirstReachAmountDate(orderList, 10000);
-
-  if (firstReach10kDate) {
-    const reachNextMonth = getNextMonthTextFromIso(firstReach10kDate);
-    const currentMonth = getTaipeiMonthText(now);
-
-    if (currentMonth >= reachNextMonth) {
-      return 85;
-    }
-  }
-
-  return 80;
+  return staff?.commission_80_unlocked || accumulatedSalary >= 5000
+    ? 80
+    : 75;
 }
 
 function getDisplayName(staff: Staff | null) {
@@ -357,7 +284,6 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(true);
   const [staff, setStaff] = useState<Staff | null>(null);
   const [salaryOrders, setSalaryOrders] = useState<SalaryOrder[]>([]);
-  const [allSalaryOrders, setAllSalaryOrders] = useState<SalaryOrder[]>([]);
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
   const [allowedServices, setAllowedServices] = useState<string[]>([]);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -404,31 +330,15 @@ export default function StaffPage() {
     return orderTotal + monthBonus;
   }, [salaryOrders, monthBonus]);
 
-  const totalOrderAmount = useMemo(() => {
-    return allSalaryOrders.reduce((sum, order) => sum + getOrderAmount(order), 0);
-  }, [allSalaryOrders]);
-
-  const totalYearSalary = useMemo(() => {
-    const year = new Date().getFullYear();
-
-    return allSalaryOrders
-      .filter((order) => {
-        const sourceDate =
-          order.order_finished_at || order.completed_at || order.created_at;
-
-        if (!sourceDate) return false;
-
-        return new Date(sourceDate).getFullYear() === year;
-      })
-      .reduce((sum, order) => sum + Number(order.staff_salary || 0), 0);
-  }, [allSalaryOrders]);
-
-  const currentRate = useMemo(() => {
-    return getCurrentRateByRule(staff, allSalaryOrders, totalYearSalary);
-  }, [staff, allSalaryOrders, totalYearSalary]);
-
-  const progress85 = Math.min(100, Math.round((totalOrderAmount / 10000) * 100));
-  const progress90 = Math.min(100, Math.round((totalYearSalary / 100000) * 100));
+  const manualBaseRate = getManualBaseRate(staff?.commission_tier);
+  const accumulatedSalary = Number(
+    staff?.commission_accumulated_salary || 0
+  );
+  const currentRate = getCurrentBaseRate(staff);
+  const progress80 = Math.min(
+    100,
+    Math.round((accumulatedSalary / 5000) * 100)
+  );
 
   useEffect(() => {
     boot();
@@ -514,9 +424,8 @@ export default function StaffPage() {
     const { startIso, endIso } = getMonthRange(selectedMonth);
 
     const { data: monthOrders, error: monthError } = await supabase
-      .from("play_orders")
+      .from("xy_play_orders")
       .select("*")
-      .or(XY_PLAY_ORDER_FILTER)
       .eq("discord_id", discordId)
       .or("is_deleted.eq.false,is_deleted.is.null")
       .gte("order_finished_at", startIso)
@@ -530,23 +439,8 @@ export default function StaffPage() {
       setSalaryOrders((monthOrders || []) as SalaryOrder[]);
     }
 
-    const { data: allOrders, error: allError } = await supabase
-      .from("play_orders")
-      .select("*")
-      .or(XY_PLAY_ORDER_FILTER)
-      .eq("discord_id", discordId)
-      .or("is_deleted.eq.false,is_deleted.is.null")
-      .order("order_finished_at", { ascending: false });
-
-    if (allError) {
-      console.error("load all salary orders error:", allError);
-      setAllSalaryOrders([]);
-    } else {
-      setAllSalaryOrders((allOrders || []) as SalaryOrder[]);
-    }
-
     const { data: bonusData, error: bonusError } = await supabase
-      .from("players_bonus")
+      .from("xy_players_bonus")
       .select("*")
       .eq("discord_id", discordId)
       .gte("created_at", startIso)
@@ -602,7 +496,7 @@ export default function StaffPage() {
     setProfileSaving(true);
 
     const { data, error } = await supabase
-      .from("players")
+      .from("xy_players")
       .update({
         display_name: profileForm.display_name || null,
         real_name: profileForm.real_name || null,
@@ -635,7 +529,7 @@ export default function StaffPage() {
     setOnlineSaving(true);
 
     const { data, error } = await supabase
-      .from("players")
+      .from("xy_players")
       .update({
         is_online: nextOnline,
         updated_at: new Date().toISOString(),
@@ -671,7 +565,7 @@ export default function StaffPage() {
     setServiceSaving(true);
 
     const { error: updateStaffError } = await supabase
-      .from("players")
+      .from("xy_players")
       .update({
         allowed_services: allowedServices,
         updated_at: new Date().toISOString(),
@@ -944,33 +838,26 @@ export default function StaffPage() {
                     </p>
 
                     <p className="pb-1 text-sm font-semibold text-slate-500">
-                      {staff.commission_tier === "auto" ||
-                      !staff.commission_tier
-                        ? "自動判定"
-                        : "後台設定"}
+                      {manualBaseRate
+                        ? "後台手動設定"
+                        : "永久累積基礎抽成"}
                     </p>
                   </div>
 
                   <p className="mt-3 text-sm leading-6 text-slate-500">
-                    2026/09/01 前未手動設定者預設 90%；後台設定會優先套用。9 月後預設
-                    80%，累積接單滿 10,000 後下個月 85%，年度薪資達標後隔年 90%。
+                    自動判定基礎抽成 75%；累積薪資滿 5,000 後永久解鎖
+                    80%。若單筆訂單金額大於 4,999，75% 的該筆為
+                    80%，80% 的該筆為 82%。
                   </p>
                 </div>
               </div>
 
               <div className="mt-5 space-y-4">
                 <ProgressBar
-                  title="升級 85% 進度"
-                  current={totalOrderAmount}
-                  target={10000}
-                  percent={progress85}
-                />
-
-                <ProgressBar
-                  title="升級隔年 90% 進度"
-                  current={totalYearSalary}
-                  target={100000}
-                  percent={progress90}
+                  title="累積薪資 5,000 永久解鎖 80% 進度"
+                  current={accumulatedSalary}
+                  target={5000}
+                  percent={progress80}
                 />
               </div>
             </div>
