@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   RefreshCw,
@@ -281,6 +281,7 @@ function getAvatarFromSession(session: any) {
 }
 
 export default function StaffPage() {
+  const panelContentRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [staff, setStaff] = useState<Staff | null>(null);
   const [salaryOrders, setSalaryOrders] = useState<SalaryOrder[]>([]);
@@ -302,6 +303,31 @@ export default function StaffPage() {
     bank_name: "",
     bank_account: "",
   });
+
+  const isProfilePanel = activePanel === "profile";
+  const isOrderPanel = activePanel === "orders" || activePanel === "tips";
+  const isBonusPanel = activePanel === "bonus" || activePanel === "deductions";
+  const visibleSalaryOrders =
+    activePanel === "tips"
+      ? salaryOrders.filter((order) => Number(order.bonus_amount || 0) > 0)
+      : salaryOrders;
+  const visibleBonuses =
+    activePanel === "deductions"
+      ? bonuses.filter((bonus) => Number(bonus.amount || 0) < 0)
+      : bonuses.filter((bonus) => Number(bonus.amount || 0) >= 0);
+
+  function selectPanel(panelId: string) {
+    setActivePanel(panelId);
+
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      window.requestAnimationFrame(() => {
+        panelContentRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    }
+  }
 
   const monthOrderCount = salaryOrders.length;
 
@@ -773,7 +799,7 @@ export default function StaffPage() {
                     <button
                       type="button"
                       key={id}
-                      onClick={() => setActivePanel(id)}
+                      onClick={() => selectPanel(id)}
                       className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${activePanel === id ? "bg-orange-500 text-white shadow-sm" : "text-slate-500 hover:bg-orange-50 hover:text-orange-700"}`}
                     >
                       <ClipboardList size={14} />{label}
@@ -816,14 +842,15 @@ export default function StaffPage() {
           </div>
         </section>
 
-        {activePanel === "admin-service" && <AdminServiceApplication staff={staff} />}
-        {activePanel === "benefits" && <BenefitApplication staff={staff} monthSalary={monthSalary} />}
-        {activePanel.endsWith("-approval") && <ApprovalPanel month={selectedMonth} kind={activePanel} />}
+        <div ref={panelContentRef} className="scroll-mt-4 space-y-5">
+          {activePanel === "admin-service" && <AdminServiceApplication staff={staff} />}
+          {activePanel === "benefits" && <BenefitApplication staff={staff} monthSalary={monthSalary} />}
+          {activePanel.endsWith("-approval") && <ApprovalPanel month={selectedMonth} kind={activePanel} />}
 
-        {activePanel === "profile" && <EmployeeAnnouncements />}
+          {activePanel === "profile" && <EmployeeAnnouncements />}
 
-        <section className={`grid gap-5 xl:grid-cols-[0.9fr_1.4fr] ${["admin-service", "benefits", "admin-approval", "reimburse-approval", "benefit-approval", "leave-approval", "suspend-approval"].includes(activePanel) ? "hidden" : ""}`}>
-          <div className="space-y-5">
+          <section className={`grid gap-5 ${isProfilePanel ? "xl:grid-cols-[0.9fr_1.4fr]" : "grid-cols-1"} ${["admin-service", "benefits", "admin-approval", "reimburse-approval", "benefit-approval", "leave-approval", "suspend-approval"].includes(activePanel) ? "hidden" : ""}`}>
+          <div className={isProfilePanel ? "space-y-5" : "hidden"}>
             <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1005,7 +1032,7 @@ export default function StaffPage() {
           </div>
 
           <div className="space-y-5">
-            <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+            <div className={`${isProfilePanel ? "" : "hidden"} rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100`}>
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
@@ -1064,21 +1091,26 @@ export default function StaffPage() {
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-orange-100 bg-white shadow-sm shadow-orange-100">
+            <div className={`${isOrderPanel ? "" : "hidden"} rounded-[28px] border border-orange-100 bg-white shadow-sm shadow-orange-100`}>
               <div className="border-b border-orange-100 px-5 py-4">
                 <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
                   <WalletCards size={20} className="text-orange-500" />
-                  {formatMonthLabel(selectedMonth)}訂單
+                  {formatMonthLabel(selectedMonth)}
+                  {activePanel === "tips" ? "打賞明細" : "訂單明細"}
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  顯示所選月份的薪資訂單。
+                  {activePanel === "tips"
+                    ? "顯示所選月份有打賞的訂單。"
+                    : "顯示所選月份的薪資訂單。"}
                 </p>
               </div>
 
-              {salaryOrders.length === 0 ? (
+              {visibleSalaryOrders.length === 0 ? (
                 <div className="px-5 py-12 text-center text-sm font-semibold text-slate-400">
-                  目前沒有這個月份的訂單
+                  {activePanel === "tips"
+                    ? "目前沒有這個月份的打賞"
+                    : "目前沒有這個月份的訂單"}
                 </div>
               ) : (
                 <div className="mobile-table-card overflow-x-auto">
@@ -1097,7 +1129,7 @@ export default function StaffPage() {
                     </thead>
 
                     <tbody>
-                      {salaryOrders.map((order) => (
+                      {visibleSalaryOrders.map((order) => (
                         <tr key={order.id}>
                           <td data-label="完成時間">
                             {formatDateTime(
@@ -1150,17 +1182,20 @@ export default function StaffPage() {
               )}
             </div>
 
-            <div className="rounded-[28px] border border-orange-100 bg-white shadow-sm shadow-orange-100">
+            <div className={`${isBonusPanel ? "" : "hidden"} rounded-[28px] border border-orange-100 bg-white shadow-sm shadow-orange-100`}>
               <div className="border-b border-orange-100 px-5 py-4">
                 <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
                   <Gift size={20} className="text-orange-500" />
-                  {formatMonthLabel(selectedMonth)}獎金 / 扣除
+                  {formatMonthLabel(selectedMonth)}
+                  {activePanel === "deductions" ? "薪資扣項" : "獎金明細"}
                 </h2>
               </div>
 
-              {bonuses.length === 0 ? (
+              {visibleBonuses.length === 0 ? (
                 <div className="px-5 py-10 text-center text-sm font-semibold text-slate-400">
-                  目前沒有這個月份的獎金或扣除
+                  {activePanel === "deductions"
+                    ? "目前沒有這個月份的薪資扣項"
+                    : "目前沒有這個月份的獎金"}
                 </div>
               ) : (
                 <div className="mobile-table-card overflow-x-auto">
@@ -1175,7 +1210,7 @@ export default function StaffPage() {
                     </thead>
 
                     <tbody>
-                      {bonuses.map((bonus) => (
+                      {visibleBonuses.map((bonus) => (
                         <tr key={bonus.id}>
                           <td data-label="時間">
                             {formatDateTime(bonus.created_at)}
@@ -1203,7 +1238,8 @@ export default function StaffPage() {
               )}
             </div>
           </div>
-        </section>
+          </section>
+        </div>
       </div>
     </main>
   );
