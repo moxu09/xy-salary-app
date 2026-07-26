@@ -86,6 +86,7 @@ type OrderForm = {
 };
 
 type BonusForm = {
+  id: string;
   discord_id: string;
   staff_name: string;
   bonus_type: string;
@@ -270,6 +271,7 @@ function makeEmptyOrderForm(): OrderForm {
 
 function makeEmptyBonusForm(): BonusForm {
   return {
+    id: "",
     discord_id: "",
     staff_name: "",
     bonus_type: "獎金",
@@ -703,6 +705,21 @@ export default function XYAdminSalaryPage() {
     });
   }
 
+  function editBonus(bonus: Bonus) {
+    setBonusForm({
+      id: bonus.id,
+      discord_id: bonus.discord_id,
+      staff_name: bonus.staff_name || bonus.discord_id,
+      bonus_type: bonus.bonus_type || "獎金",
+      description: bonus.description || "",
+      amount: String(bonus.amount ?? ""),
+    });
+
+    document
+      .getElementById("xy-bonus-editor")
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   async function saveOrder() {
     if (!orderForm.discord_id) {
       alert("請選擇員工");
@@ -850,25 +867,34 @@ export default function XYAdminSalaryPage() {
 
     setSavingBonus(true);
 
-    const { error } = await supabase.from("xy_players_bonus").insert({
+    const payload = {
       discord_id: bonusForm.discord_id,
       staff_name: bonusForm.staff_name,
       bonus_type: bonusForm.bonus_type || "獎金",
       description: bonusForm.description.trim(),
       amount,
-      created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    });
+    };
+
+    const { error } = bonusForm.id
+      ? await supabase
+          .from("xy_players_bonus")
+          .update(payload)
+          .eq("id", bonusForm.id)
+      : await supabase.from("xy_players_bonus").insert({
+          ...payload,
+          created_at: new Date().toISOString(),
+        });
 
     setSavingBonus(false);
 
     if (error) {
-      console.error("insert xy bonus error:", error);
-      alert(`新增 XY 獎金 / 扣除失敗：${error.message}`);
+      console.error("save xy bonus error:", error);
+      alert(`${bonusForm.id ? "更新" : "新增"} XY 獎金 / 扣除失敗：${error.message}`);
       return;
     }
 
-    alert("XY 獎金 / 扣除已新增");
+    alert(`XY 獎金 / 扣除已${bonusForm.id ? "更新" : "新增"}`);
     resetBonusForm();
     await loadAll();
   }
@@ -1293,11 +1319,26 @@ export default function XYAdminSalaryPage() {
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
-            <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
-              <Gift size={20} className="text-orange-500" />
-              新增獎金 / 扣除
-            </h2>
+          <div
+            id="xy-bonus-editor"
+            className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
+                <Gift size={20} className="text-orange-500" />
+                {bonusForm.id ? "編輯獎金 / 扣除" : "新增獎金 / 扣除"}
+              </h2>
+
+              {bonusForm.id ? (
+                <button
+                  type="button"
+                  onClick={resetBonusForm}
+                  className="rounded-full border border-orange-100 bg-white px-4 py-2 text-sm font-bold text-orange-600 hover:bg-orange-50"
+                >
+                  取消編輯
+                </button>
+              ) : null}
+            </div>
 
             <p className="mt-1 text-sm text-slate-500">
               獎金填正數，扣除填負數，例如：-100。
@@ -1363,8 +1404,12 @@ export default function XYAdminSalaryPage() {
                 disabled={savingBonus}
                 className="flex w-full items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-black text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
               >
-                <Plus size={17} />
-                {savingBonus ? "新增中..." : "新增獎金 / 扣除"}
+                {bonusForm.id ? <Save size={17} /> : <Plus size={17} />}
+                {savingBonus
+                  ? "儲存中..."
+                  : bonusForm.id
+                  ? "更新獎金 / 扣除"
+                  : "新增獎金 / 扣除"}
               </button>
             </div>
 
@@ -1507,10 +1552,11 @@ export default function XYAdminSalaryPage() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => editOrder(order)}
-                            className="rounded-full border border-orange-100 p-2 text-orange-600 hover:bg-orange-50"
-                            title="編輯"
+                            className="inline-flex items-center gap-1 rounded-full border border-orange-100 px-3 py-2 text-xs font-bold text-orange-600 hover:bg-orange-50"
+                            title="修改訂單"
                           >
                             <Edit3 size={15} />
+                            修改
                           </button>
 
                           <button
@@ -1576,13 +1622,24 @@ export default function XYAdminSalaryPage() {
                         {money(bonus.amount)}
                       </td>
                       <td>
-                        <button
-                          onClick={() => deleteBonus(bonus)}
-                          className="rounded-full border border-red-100 p-2 text-red-500 hover:bg-red-50"
-                          title="刪除"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => editBonus(bonus)}
+                            className="inline-flex items-center gap-1 rounded-full border border-orange-100 px-3 py-2 text-xs font-bold text-orange-600 hover:bg-orange-50"
+                            title="修改獎金或扣除"
+                          >
+                            <Edit3 size={15} />
+                            修改
+                          </button>
+
+                          <button
+                            onClick={() => deleteBonus(bonus)}
+                            className="rounded-full border border-red-100 p-2 text-red-500 hover:bg-red-50"
+                            title="刪除"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
