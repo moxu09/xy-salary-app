@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
@@ -298,6 +298,7 @@ function getSelectedMonthNumber(monthText: string) {
 }
 
 export default function XYAdminSalaryPage() {
+  const orderEditorRef = useRef<HTMLDivElement>(null);
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(true);
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -680,7 +681,12 @@ export default function XYAdminSalaryPage() {
       order_finished_at: toDatetimeInput(getOrderSourceDate(order)),
     });
 
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.requestAnimationFrame(() => {
+      orderEditorRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
   }
 
   function resetOrderForm() {
@@ -1154,7 +1160,10 @@ export default function XYAdminSalaryPage() {
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
-          <div className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
+          <div
+            ref={orderEditorRef}
+            className="scroll-mt-4 rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100"
+          >
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
