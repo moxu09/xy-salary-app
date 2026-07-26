@@ -68,30 +68,33 @@ type PayrollRow = {
   totalPay: number;
 };
 
-function getCurrentMonthInput() {
+function getDefaultDateRange() {
   const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+
+  return {
+    startDate: `${year}-${month}-01`,
+    endDate: `${year}-${month}-${String(lastDay).padStart(2, "0")}`,
+  };
 }
 
-function getMonthRange(monthText: string) {
-  const [yearText, monthValueText] = monthText.split("-");
-  const year = Number(yearText);
-  const monthValue = Number(monthValueText);
+const DEFAULT_DATE_RANGE = getDefaultDateRange();
 
-  const source =
-    Number.isInteger(year) && Number.isInteger(monthValue) && monthValue >= 1
-      ? new Date(year, monthValue - 1, 1)
-      : new Date();
+function getDateRange(startDate: string, endDate: string) {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T23:59:59.999`);
 
-  const start = new Date(source.getFullYear(), source.getMonth(), 1, 0, 0, 0);
-  const end = new Date(
-    source.getFullYear(),
-    source.getMonth() + 1,
-    0,
-    23,
-    59,
-    59
-  );
+  if (
+    !startDate ||
+    !endDate ||
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime()) ||
+    start > end
+  ) {
+    return null;
+  }
 
   return {
     startIso: start.toISOString(),
@@ -160,37 +163,22 @@ export default function XYAdminPayrollPage() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [orders, setOrders] = useState<SalaryOrder[]>([]);
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthInput());
+  const [startDate, setStartDate] = useState(DEFAULT_DATE_RANGE.startDate);
+  const [endDate, setEndDate] = useState(DEFAULT_DATE_RANGE.endDate);
+  const [appliedStartDate, setAppliedStartDate] = useState(
+    DEFAULT_DATE_RANGE.startDate
+  );
+  const [appliedEndDate, setAppliedEndDate] = useState(
+    DEFAULT_DATE_RANGE.endDate
+  );
   const [staffFilter, setStaffFilter] = useState("all");
   const [keyword, setKeyword] = useState("");
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [markingStaffId, setMarkingStaffId] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
 
-  const payrollRows = useMemo(() => {
-    const key = keyword.trim().toLowerCase();
-
+  const allPayrollRows = useMemo(() => {
     return staffList
-      .filter((staff) => {
-        if (staffFilter !== "all" && staff.discord_id !== staffFilter) {
-          return false;
-        }
-
-        if (!key) return true;
-
-        const text = [
-          staff.discord_id,
-          staff.discord_name,
-          staff.display_name,
-          staff.real_name,
-          staff.bank_name,
-          staff.bank_account,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        return text.includes(key);
-      })
       .map((staff) => {
         const staffOrders = orders.filter(
           (order) => order.discord_id === staff.discord_id
@@ -228,7 +216,35 @@ export default function XYAdminPayrollPage() {
         };
       })
       .filter((row) => row.totalPay !== 0);
-  }, [staffList, orders, bonuses, staffFilter, keyword]);
+  }, [staffList, orders, bonuses]);
+
+  const payrollRows = useMemo(() => {
+    const key = keyword.trim().toLowerCase();
+
+    return allPayrollRows.filter((row) => {
+      const staff = row.staff;
+
+      if (staffFilter !== "all" && staff.discord_id !== staffFilter) {
+        return false;
+      }
+
+      if (!key) return true;
+
+      const text = [
+        staff.discord_id,
+        staff.discord_name,
+        staff.display_name,
+        staff.real_name,
+        staff.bank_name,
+        staff.bank_account,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(key);
+    });
+  }, [allPayrollRows, staffFilter, keyword]);
 
   const totalOrderSalary = payrollRows.reduce(
     (sum, row) => sum + row.orderSalary,
@@ -249,11 +265,6 @@ export default function XYAdminPayrollPage() {
 
   const totalOrderCount = payrollRows.reduce(
     (sum, row) => sum + row.orders.length,
-    0
-  );
-
-  const totalBonusCount = payrollRows.reduce(
-    (sum, row) => sum + row.bonuses.length,
     0
   );
 
@@ -313,10 +324,20 @@ export default function XYAdminPayrollPage() {
     }
   }
 
-  async function loadPayroll() {
+  async function loadPayroll(
+    rangeStartDate = startDate,
+    rangeEndDate = endDate
+  ) {
+    const range = getDateRange(rangeStartDate, rangeEndDate);
+
+    if (!range) {
+      alert("請選擇有效的開始與結束日期，且開始日期不可晚於結束日期。");
+      return;
+    }
+
     setLoading(true);
 
-    const { startIso, endIso } = getMonthRange(selectedMonth);
+    const { startIso, endIso } = range;
 
     const [staffRes, orderRes, bonusRes] = await Promise.all([
       supabase
@@ -366,12 +387,17 @@ export default function XYAdminPayrollPage() {
     } else {
       setBonuses((bonusRes.data || []) as Bonus[]);
     }
+
+    if (!orderRes.error && !bonusRes.error) {
+      setAppliedStartDate(rangeStartDate);
+      setAppliedEndDate(rangeEndDate);
+    }
   }
 
   function makePayrollText() {
     const lines = [
       `XY 陪玩發薪預覽`,
-      `月份：${selectedMonth}`,
+      `期間：${appliedStartDate} ～ ${appliedEndDate}`,
       `總發薪：${money(totalPay)}`,
       "",
       "姓名｜銀行｜帳號｜薪水｜訂單獎金｜額外獎金/扣除｜應發合計",
@@ -407,27 +433,48 @@ export default function XYAdminPayrollPage() {
     }
   }
 
-  async function markCurrentPayrollPaid() {
-    if (payrollRows.length === 0) {
+  async function markPayrollRowsPaid(
+    targetRows: PayrollRow[],
+    scopeLabel: string,
+    staffId?: string
+  ) {
+    if (targetRows.length === 0) {
       alert("目前沒有可發薪資料。");
       return;
     }
 
+    const targetOrderCount = targetRows.reduce(
+      (sum, row) => sum + row.orders.length,
+      0
+    );
+    const targetBonusCount = targetRows.reduce(
+      (sum, row) => sum + row.bonuses.length,
+      0
+    );
+    const targetTotalPay = targetRows.reduce(
+      (sum, row) => sum + row.totalPay,
+      0
+    );
+
     const ok = window.confirm(
-      `確定要將目前畫面中的 ${payrollRows.length} 位員工標記為已發薪嗎？\n\n包含：${totalOrderCount} 筆訂單、${totalBonusCount} 筆獎金 / 扣除\n總金額：${money(totalPay)}`
+      `確定要將${scopeLabel}標記為已發薪嗎？\n\n期間：${appliedStartDate} ～ ${appliedEndDate}\n包含：${targetOrderCount} 筆訂單、${targetBonusCount} 筆獎金 / 扣除\n總金額：${money(targetTotalPay)}`
     );
 
     if (!ok) return;
 
-    setMarkingPaid(true);
+    if (staffId) {
+      setMarkingStaffId(staffId);
+    } else {
+      setMarkingPaid(true);
+    }
 
     const now = new Date().toISOString();
 
-    const orderIds = payrollRows.flatMap((row) =>
+    const orderIds = targetRows.flatMap((row) =>
       row.orders.map((order) => order.id)
     );
 
-    const bonusIds = payrollRows.flatMap((row) =>
+    const bonusIds = targetRows.flatMap((row) =>
       row.bonuses.map((bonus) => bonus.id)
     );
 
@@ -461,6 +508,7 @@ export default function XYAdminPayrollPage() {
 
     const results = await Promise.all(updateJobs);
     setMarkingPaid(false);
+    setMarkingStaffId(null);
 
     const firstError = results.find((result) => result.error)?.error;
 
@@ -470,8 +518,23 @@ export default function XYAdminPayrollPage() {
       return;
     }
 
-    alert("已標記為已發薪");
-    await loadPayroll();
+    alert(`${scopeLabel}已標記為已發薪`);
+    await loadPayroll(appliedStartDate, appliedEndDate);
+  }
+
+  async function markDateRangePaid() {
+    await markPayrollRowsPaid(
+      allPayrollRows,
+      `${appliedStartDate} ～ ${appliedEndDate} 期間內全部資料`
+    );
+  }
+
+  async function markStaffPaid(row: PayrollRow) {
+    await markPayrollRowsPaid(
+      [row],
+      `${getDisplayName(row.staff)}的發薪資料`,
+      row.staff.id
+    );
   }
 
   if (checking) {
@@ -510,7 +573,7 @@ export default function XYAdminPayrollPage() {
               </h1>
 
               <p className="mt-2 text-sm text-slate-500">
-                預覽本月每位有薪水要發的員工，包含姓名、銀行、帳號、薪水與獎金。
+                依自訂日期範圍預覽每位員工的訂單、薪水與獎金，並可整批或逐人標記發薪。
               </p>
             </div>
 
@@ -530,7 +593,9 @@ export default function XYAdminPayrollPage() {
               </Link>
 
               <button
-                onClick={loadPayroll}
+                onClick={() =>
+                  loadPayroll(appliedStartDate, appliedEndDate)
+                }
                 disabled={loading}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
               >
@@ -550,13 +615,26 @@ export default function XYAdminPayrollPage() {
         </section>
 
         <section className="rounded-[28px] border border-orange-100 bg-white p-5 shadow-sm shadow-orange-100">
-          <div className="grid gap-3 lg:grid-cols-[180px_220px_1fr_auto_auto]">
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(event) => setSelectedMonth(event.target.value)}
-              className="rounded-2xl border border-orange-100 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none"
-            />
+          <div className="grid gap-3 lg:grid-cols-[170px_170px_200px_1fr_auto_auto]">
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              開始日期
+              <input
+                type="date"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+                className="w-full rounded-2xl border border-orange-100 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none"
+              />
+            </label>
+
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              結束日期
+              <input
+                type="date"
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+                className="w-full rounded-2xl border border-orange-100 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none"
+              />
+            </label>
 
             <select
               value={staffFilter}
@@ -582,11 +660,11 @@ export default function XYAdminPayrollPage() {
             </div>
 
             <button
-              onClick={loadPayroll}
+              onClick={() => loadPayroll()}
               disabled={loading}
               className="rounded-full bg-orange-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-orange-200 hover:bg-orange-600 disabled:opacity-60"
             >
-              查詢
+              查詢時段
             </button>
 
             <button
@@ -609,17 +687,21 @@ export default function XYAdminPayrollPage() {
               </h2>
 
               <p className="mt-1 text-sm text-slate-500">
-                只顯示目前還沒有標記已發薪、且金額不為 0 的員工。
+                目前期間：{appliedStartDate} ～ {appliedEndDate}。只顯示尚未發薪且金額不為 0 的員工。
               </p>
             </div>
 
             <button
-              onClick={markCurrentPayrollPaid}
-              disabled={markingPaid || payrollRows.length === 0}
+              onClick={markDateRangePaid}
+              disabled={
+                markingPaid ||
+                markingStaffId !== null ||
+                allPayrollRows.length === 0
+              }
               className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-emerald-100 hover:bg-emerald-600 disabled:opacity-60"
             >
               <CheckCircle2 size={16} />
-              {markingPaid ? "處理中..." : "將目前預覽標記已發薪"}
+              {markingPaid ? "處理中..." : "將此時間段全部標記已發薪"}
             </button>
           </div>
 
@@ -644,6 +726,7 @@ export default function XYAdminPayrollPage() {
                     <th>訂單獎金</th>
                     <th>額外獎金 / 扣除</th>
                     <th>應發合計</th>
+                    <th>發薪操作</th>
                   </tr>
                 </thead>
 
@@ -701,6 +784,23 @@ export default function XYAdminPayrollPage() {
                       </td>
                       <td className="text-lg font-black text-orange-600">
                         {money(row.totalPay)}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() => markStaffPaid(row)}
+                          disabled={markingPaid || markingStaffId !== null}
+                          className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-emerald-500 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-600 disabled:opacity-60"
+                        >
+                          {markingStaffId === row.staff.id ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <CheckCircle2 size={15} />
+                          )}
+                          {markingStaffId === row.staff.id
+                            ? "處理中..."
+                            : "標記此人已發薪"}
+                        </button>
                       </td>
                     </tr>
                   ))}
