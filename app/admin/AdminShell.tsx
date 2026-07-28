@@ -14,7 +14,7 @@ import {
 
 const navItems = [
   { href: "/admin/staff", label: "員工管理", icon: Users },
-  { href: "/admin/orders", label: "訂單總覽", icon: FileText },
+  { href: "/xy/admin/salary", label: "訂單總覽", icon: FileText },
   { href: "/admin/payroll", label: "發薪模式", icon: Banknote },
   { href: "/admin/salary-rank", label: "薪資排序", icon: BarChart3 },
   { href: "/admin/approvals", label: "簽核申請", icon: ClipboardCheck },
